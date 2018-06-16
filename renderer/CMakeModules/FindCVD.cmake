@@ -16,7 +16,7 @@ FIND_PATH(
 
 FIND_LIBRARY(
   CVD_LIBRARY
-  NAMES cvd
+  NAMES CVD
   PATHS
     /usr/lib
     /usr/local/lib

@@ -24,24 +24,20 @@
 #include <memory>
 #include <random>
 #include <utility>
-
-class CollisionInterface {
-public:
-  // True implies a collision, false no collision
-  virtual bool collided(const TooN::Vector<3,float> position, const TooN::Vector<3,float> next_position) = 0;
-};
+#include "interfaces.hpp"
 
 
-class TrajectoryGenerator {
+class TrajectoryGenerator : public ITrajectoryGenerator {
 public:
   typedef TooN::Vector<3> Vector;
-  typedef std::pair<Vector,Vector> Pose;
+  //typedef std::pair<Vector,Vector> Pose;
   TrajectoryGenerator(std::shared_ptr<CollisionInterface> collision_checker,
+                      std::shared_ptr<FocusTargetInterface> target,
                       const int number_attempts = 100);
 
-  bool Initialise(const Vector initial_pose, const Vector lookat_pose);
+  bool init(const Vector initial_pose, const Vector lookat_pose);
 
-  Pose Step(const float timestep = 0.025);
+  Pose step(const float timestep = 0.025);
 
   void set_max_speed(const float max_speed) {
     max_speed_ = max_speed;
@@ -55,17 +51,26 @@ public:
     drag_ = drag;
   }
 
-  Pose CalculatePose();
+  Pose calculate_pose();
 private:
-  void UpdateObject(const float timestep, Vector& position, Vector& velocity);
+  void UpdateObject(const float timestep,
+                    Vector& position,
+                    Vector& velocity,
+                    bool is_target=false);
+  bool radius_limited(const Vector& position);
 
+  Vector target_unit_vector();
   Vector random_unit_vector();
+  Vector camera_unit_vector();
 
   std::shared_ptr<CollisionInterface> collision_checker_;
+  std::shared_ptr<FocusTargetInterface> target_;
   std::default_random_engine random_eng_;
 
   const int num_attempts_;
   const int num_attempts_until_bounce_;
+  float max_radius_;
+  float min_radius_;
   float max_speed_;
   float max_acceleration_;
   float drag_;
@@ -83,6 +88,7 @@ private:
   // NOTE A roll tolerance could be introduced to slightly change the roll angle
   Vector target_velocity_;
   Vector target_position_;
+  Vector target_field_;
 };
 
 

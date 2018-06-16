@@ -109,6 +109,8 @@ target_link_libraries(${sutil_target}
   optixu
   ${GLUT_LIBRARIES}
   ${OPENGL_LIBRARIES}
+  ${CVD_LIBRARY}
+  png jpeg
   )
 if(WIN32)
   target_link_libraries(${sutil_target} winmm.lib)

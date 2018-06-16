@@ -16,7 +16,7 @@ FIND_PATH(
 
 FIND_LIBRARY(
   CVD_LIBRARY
-  NAMES cvd
+  NAMES CVD
   PATHS
     ${CMAKE_SOURCE_DIR}/../libcvd
     ${CMAKE_SOURCE_DIR}/../cvd
