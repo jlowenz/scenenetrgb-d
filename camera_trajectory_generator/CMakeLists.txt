@@ -15,7 +15,7 @@ find_package(CVD REQUIRED)
 find_package(GLUT REQUIRED)
 find_package(Pangolin REQUIRED)
 FIND_PACKAGE(ASSIMP REQUIRED)
-find_package(Boost REQUIRED COMPONENTS filesystem)
+find_package(Boost REQUIRED)
 
 message("Assimp Lib:" ${ASSIMP_LIBRARY})
 

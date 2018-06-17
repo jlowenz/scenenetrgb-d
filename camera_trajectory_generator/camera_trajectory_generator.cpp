@@ -26,6 +26,9 @@
 #include <numeric>
 
 #include <boost/filesystem.hpp>
+#include <boost/foreach.hpp>
+#include <boost/algorithm/string.hpp>
+#include <boost/algorithm/string/split.hpp>
 
 #include <assimp/Importer.hpp>
 #include <assimp/cimport.h>
@@ -289,7 +292,7 @@ public:
     TooN::Vector<3>look_dir = lookAt - eye;
     TooN::normalize(look_dir);
 
-    TooN::Vector<3>up_vec   = TooN::makeVector(0.0f,-1.0f,0.0f);
+    TooN::Vector<3>up_vec   = TooN::makeVector(0.0f,1.0f,0.0f);
     TooN::Vector<3>right    = look_dir ^ up_vec;
     TooN::Vector<3>newup    = look_dir ^ right;
 
@@ -726,7 +729,9 @@ private:
 // Focus Interface
 class Focus : public FocusTargetInterface
 {
-  std::string objclass_;
+  std::vector<std::string> objclasses_;
+  std::string objclass_; // active object class
+  int class_idx_;
   Scene* scene_;
   std::default_random_engine& re_;
   std::normal_distribution<float> nd_;
@@ -737,11 +742,12 @@ class Focus : public FocusTargetInterface
   TooN::Vector<3> target_;
 
 public:
-  Focus(const std::string& objclass,
+  Focus(const std::vector<std::string>& objclass,
         Scene* scene,        
         std::default_random_engine& re,
         float wait_time_secs)
-    : objclass_(objclass),
+    : objclasses_(objclass),
+      class_idx_(0),
       scene_(scene),
       re_(re),
       nd_(0,1),
@@ -752,25 +758,35 @@ public:
     target_ = TooN::Zeros;
   }
   virtual ~Focus() {}
+
+  int class_index()
+  {
+    int c = class_idx_;
+    class_idx_ = (class_idx_ + 1) % objclasses_.size();
+    return c;
+  }
+  
   void step(float delta)
   {
     if (time_ == 0.f) {
       wait_time_ = mean_wait_time_ + (var_ * nd_(re_)); // +/- 20 secs on mean wait time
       //target_ = TooN::Zeros;
-      TooN::Vector<3> t = scene_->random_object_pose(objclass_);
-      while (t == target_) {
-        t = scene_->random_object_pose(objclass_);
-      }
+      std::string c = objclasses_[class_index()];
+      TooN::Vector<3> t = scene_->random_object_pose(c);
+      // while (t == target_) {
+      //   t = scene_->random_object_pose(c);
+      // }
       target_ = t;      
       std::cout << std::endl << "Switching focus: " << target_ << std::endl;
     } else if (time_ > wait_time_) {
       // select a wait time
       wait_time_ = mean_wait_time_ + (var_ * nd_(re_)); // +/- 20 secs on mean wait time
       time_ = 0.f; // reset timer
-      TooN::Vector<3> t = scene_->random_object_pose(objclass_);
-      while (t == target_) {
-        t = scene_->random_object_pose(objclass_);
-      }
+      std::string c = objclasses_[class_index()];
+      TooN::Vector<3> t = scene_->random_object_pose(c);
+      // while (t == target_) {
+      //   t = scene_->random_object_pose(objclass_);
+      // }
       target_ = t;
       std::cout << std::endl << "Switching focus: " << target_ << std::endl;
     }
@@ -784,6 +800,14 @@ public:
     target = target_;
   }
 };
+void parse_string_csv(const std::string& csv, std::vector<std::string>& v)
+{
+  std::vector<std::string> nums;
+  boost::split(nums, csv, boost::is_any_of(", "), boost::token_compress_on);
+  BOOST_FOREACH (std::string& s, nums) {
+    v.push_back(s);
+  }
+}
 
 int
 main(int argc, char* argv[])
@@ -815,9 +839,11 @@ main(int argc, char* argv[])
   }
   
   std::string focus_obj = "";
+  std::vector<std::string> focus_objs;
   if (argc > 5) {
     focus_obj = std::string(argv[5]);
     std::cout << "Focus object class: " << focus_obj << std::endl;
+    parse_string_csv(focus_obj, focus_objs);
   }
 
   //GL::glutInit(&argc, argv);
@@ -886,8 +912,8 @@ main(int argc, char* argv[])
 
   std::shared_ptr<Focus> focus;
   std::default_random_engine re((std::random_device())());
-  if (focus_obj != "") {
-    focus.reset(new Focus(focus_obj, &myscene, re, 10));
+  if (focus_objs.size() > 0) {
+    focus.reset(new Focus(focus_objs, &myscene, re, 10));
   } 
 
   
@@ -907,7 +933,7 @@ main(int argc, char* argv[])
   std::uniform_real_distribution<> real_random_number(-0.4f,0.4f);
 
   float rand_x = real_random_number(mt)*room_size[0] + room_center[0];
-  float rand_y = real_random_number(mt)*room_size[1] + room_center[1];
+  float rand_y = fabs(real_random_number(mt))*room_size[1] + room_center[1];
   float rand_z = real_random_number(mt)*room_size[2] + room_center[2];
 
   if (focus) {
@@ -933,8 +959,8 @@ main(int argc, char* argv[])
   TrajGenPtr trajGen;
   if (!use_orbit) {
     TrajectoryGenerator* t = new TrajectoryGenerator(collision_interface,focus,5);
-    t->set_max_speed(2.0);
-    t->set_max_acceleration(0.7);
+    t->set_max_speed(0.5);
+    t->set_max_acceleration(0.5);
     t->init(basePosition, targetPosition);
     trajGen.reset(t);
   } else {
@@ -1005,15 +1031,15 @@ main(int argc, char* argv[])
       std::cout<<"Pose out of bounds"<<std::endl;
       exit(1);
     }
-    if (pose.target[0] < min_max_bb[0] || pose.target[0] > min_max_bb[1]
-        || pose.target[1] < min_max_bb[2] || pose.target[1] > min_max_bb[3]
-        || pose.target[2] < min_max_bb[4] || pose.target[2] > min_max_bb[5]) {
-      std::cout<<"Target Pose out of bounds"<<std::endl;
-      std::cout << "  Pose: " << pose.target << std::endl;
-      std::cout << "   min: " << min_max_bb[0] << "," << min_max_bb[2] << "," << min_max_bb[4] << std::endl;
-      std::cout << "   max: " << min_max_bb[1] << "," << min_max_bb[3] << "," << min_max_bb[5] << std::endl;
-      exit(1);
-    }
+    // if (pose.target[0] < min_max_bb[0] || pose.target[0] > min_max_bb[1]
+    //     || pose.target[1] < min_max_bb[2] || pose.target[1] > min_max_bb[3]
+    //     || pose.target[2] < min_max_bb[4] || pose.target[2] > min_max_bb[5]) {
+    //   std::cout<<"Target Pose out of bounds"<<std::endl;
+    //   std::cout << "  Pose: " << pose.target << std::endl;
+    //   std::cout << "   min: " << min_max_bb[0] << "," << min_max_bb[2] << "," << min_max_bb[4] << std::endl;
+    //   std::cout << "   max: " << min_max_bb[1] << "," << min_max_bb[3] << "," << min_max_bb[5] << std::endl;
+    //   exit(1);
+    // }
     pose_t++;
     if (burn % 10 == 0) {
       myscene.check_rgb = false;
@@ -1077,12 +1103,12 @@ main(int argc, char* argv[])
       std::cout<<std::endl<<"Pose out of bounds"<<std::endl;
       exit(1);
     }
-    if (pose.target[0] < min_max_bb[0] || pose.target[0] > min_max_bb[1]
-        || pose.target[1] < min_max_bb[2] || pose.target[1] > min_max_bb[3]
-        || pose.target[2] < min_max_bb[4] || pose.target[2] > min_max_bb[5]) {
-      std::cout<<std::endl<<"Target Pose out of bounds"<<std::endl;
-      exit(1);
-    }
+    // if (pose.target[0] < min_max_bb[0] || pose.target[0] > min_max_bb[1]
+    //     || pose.target[1] < min_max_bb[2] || pose.target[1] > min_max_bb[3]
+    //     || pose.target[2] < min_max_bb[4] || pose.target[2] > min_max_bb[5]) {
+    //   std::cout<<std::endl<<"Target Pose out of bounds"<<std::endl;
+    //   exit(1);
+    // }
     TooN::Vector<3>eye    = pose.camera;
     TooN::Vector<3>lookAt = pose.target;
 

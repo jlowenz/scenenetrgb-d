@@ -125,18 +125,23 @@ TrajectoryGenerator::UpdateObject(const float timestep, Vector& position,
     // Update the proposed object position and check for collisions
     temporary_position += (timestep * temporary_velocity);
 
-    if (!collision_checker_->collided(position,temporary_position)) {
-      velocity = temporary_velocity;
+    if (!is_target) {    
+      if (!collision_checker_->collided(position,temporary_position)) {
+        velocity = temporary_velocity;
+        position = temporary_position;
+        break;
+      }
+      // Reverse the direction of velocity if many collisions one way (i.e. bounce)
+      if (attempts == num_attempts_until_bounce_) {
+        velocity *= -1.0;
+      }
+      // If we have exhausted our attempts the trajectory stops dead
+      if (attempts >= num_attempts_ - 1) {
+        velocity = TooN::Zeros;
+      }
+    } else {
       position = temporary_position;
-      break;
-    }
-    // Reverse the direction of velocity if many collisions one way (i.e. bounce)
-    if (attempts == num_attempts_until_bounce_) {
-      velocity *= -1.0;
-    }
-    // If we have exhausted our attempts the trajectory stops dead
-    if (attempts >= num_attempts_ - 1) {
-      velocity = TooN::Zeros;
+      velocity = temporary_velocity;
     }
   }
 

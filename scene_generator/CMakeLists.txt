@@ -12,7 +12,7 @@ if (NOT Chrono_FOUND)
   return()
 endif()
 
-find_package(Boost REQUIRED COMPONENTS filesystem)
+find_package(Boost REQUIRED COMPONENTS filesystem system)
 
 
 #--------------------------------------------------------------
