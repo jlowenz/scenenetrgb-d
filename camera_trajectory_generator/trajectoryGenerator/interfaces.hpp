@@ -24,6 +24,7 @@ struct Pose
 
 struct ITrajectoryGenerator
 {
+  virtual Pose calculate_pose() = 0;
   virtual Pose step(const float timestep) = 0;
 };
 
@@ -39,7 +40,9 @@ typedef std::shared_ptr<CollisionInterface> CollisionInterfacePtr;
 
 class FocusTargetInterface {
 public:
+  virtual void step(float delta) = 0;
   virtual void current_target(TooN::Vector<3>& target) = 0;
+  //virtual void next_target() = 0;
 };
 
 typedef std::shared_ptr<FocusTargetInterface> FocusTargetInterfacePtr;

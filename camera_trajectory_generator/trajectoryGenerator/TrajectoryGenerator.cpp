@@ -180,7 +180,11 @@ TrajectoryGenerator::target_unit_vector() {
     Vector look_at;
     target_->current_target(look_at);
     Vector delta = TooN::unit(look_at - target_position_);
-    return TooN::unit(0.5 * delta + 0.5 * random_unit_vector());
+    if (!std::isfinite(delta[0])) {
+      return TooN::Zeros;
+    } else {
+      return TooN::unit(0.5 * delta + 0.5 * random_unit_vector());
+    }
   } else {
     return random_unit_vector();
   }

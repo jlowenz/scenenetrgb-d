@@ -1,26 +1,59 @@
 #include "OrbitGenerator.hpp"
 
-void sph2cart(const TooN::Vector<3>& sph, TooN::Vector<3>& cart)
+#include <boost/geometry.hpp>
+#include <boost/geometry/geometries/register/point.hpp>
+
+namespace bg = boost::geometry;
+namespace cs = bg::cs;
+
+struct sph
 {
-  cart[0] = sph[2] * cos(sph[0]) * sin(sph[1]);
-  cart[1] = sph[2] * cos(sph[1]);
-  cart[2] = sph[2] * sin(sph[0]) * sin(sph[1]);
+  TooN::Vector<3> model_;
+  double theta, phi, radius;
+  sph(const TooN::Vector<3>& mdl) : model_(mdl), theta(mdl[0]), phi(mdl[1]), radius(mdl[2]) {}
+  operator const TooN::Vector<3>&() {
+    model_[0] = theta;
+    model_[1] = phi;
+    model_[2] = radius;
+    return model_;
+  }
+};
+
+BOOST_GEOMETRY_REGISTER_POINT_3D(TooN::Vector<3>, double, cs::cartesian, operator[](0), operator[](2), operator[](1));
+BOOST_GEOMETRY_REGISTER_POINT_3D(sph, double, cs::spherical<bg::radian>, theta, phi, radius);
+
+void sph2cart(const TooN::Vector<3>& sphere, TooN::Vector<3>& cart)
+{  
+  // cart[0] = sph[2] * cos(sph[0]) * sin(sph[1]);
+  // cart[1] = sph[2] * cos(sph[1]);
+  // cart[2] = sph[2] * sin(sph[0]) * sin(sph[1]);
+  sph s(sphere);
+  bg::transform(s, cart);
 }
 
-void cart2sph(const TooN::Vector<3>& cart, TooN::Vector<3>& sph)
+void cart2sph(const TooN::Vector<3>& cart, TooN::Vector<3>& sphere)
 {
-  float radius = TooN::norm(cart);
-  TooN::Vector<3> ncart = cart / radius;
-  sph[1] = acos(ncart[1]);
-  sph[0] = acos(ncart[0]/sin(sph[1]));
-  sph[2] = radius;
+  // float radius = TooN::norm(cart);
+  // //TooN::Vector<3> ncart = cart / radius;
+  sph s(sphere);
+  std::cout << "sph:0 " << sphere[0] << " " << sphere[1] << " " << sphere[2] << std::endl;
+  bg::transform(cart, s);
+  sphere = s;
+  sphere[0] = (sphere[0] < 0) ? (2*M_PI+sphere[0]) : sphere[0]; // normalize 0->2pi
+  // sph[1] = acos(cart[1]/radius);
+  // sph[0] = atan2(cart[2],cart[0]);
+  // sph[2] = radius;
+  std::cout << "sph:1 " << sphere[0] << " " << sphere[1] << " " << sphere[2] << std::endl;
 }
 
 OrbitGenerator::OrbitGenerator(CollisionInterfacePtr collision_checker,
-                               FocusTargetInterfacePtr target)
+                               FocusTargetInterfacePtr target,
+                               int num_poses)
   : collision_checker_(collision_checker),
     target_(target),
-    re_((std::random_device())())
+    re_((std::random_device())()),
+    max_poses_(num_poses),
+    curr_pose_(0)
 {
   
 }
@@ -29,43 +62,111 @@ OrbitGenerator::~OrbitGenerator()
 {
 }
 
-bool
-OrbitGenerator::init(float init_radius, const Vector& scene_centroid)
+void
+OrbitGenerator::orbit2cam()
 {
-  scene_centroid_ = scene_centroid;
-  std::uniform_real_distribution<> unif(0,1.0);
-  // choose some az between 0, 2pi
-  orbit_pos_[0] = unif(re_) * 2 * M_PI;
-  // choose some el between 0, pi/2
-  orbit_pos_[1] = unif(re_) * M_PI/2.0;
-  // start with the init radius
-  orbit_pos_[2] = init_radius;
-  orbit_vel_ = TooN::Zeros;
-  on_sphere_ = true;
-  
-  target_->current_target(target_goal_);
-  target_pos_ = scene_centroid_;
-  target_vel_ = TooN::Zeros;
   sph2cart(orbit_pos_, camera_pos_);
   camera_pos_ += target_pos_;
+  //camera_vel_ = TooN::Zeros;
+}
+
+bool
+OrbitGenerator::init(float min_radius, float max_radius, float speed, float accel)
+{
+  max_radius_ = max_radius;
+  min_radius_ = min_radius;
+  max_speed_ = speed;
+  max_accel_ = accel;
+  float init_radius = unif_(re_)*(max_radius - min_radius) + min_radius;
+
+  // orbit_pos_ represents the current point on the sphere
+  // choose some az between 0, 2pi
+  orbit_pos_[0] = unif_(re_) * 2 * M_PI;
+  // choose some el between 0, pi/2
+  orbit_pos_[1] = unif_(re_) * M_PI/2.0;
+  // start with the init radius
+  orbit_pos_[2] = init_radius;
+  orbit_vel_ = 0;
+  state_ = ChangeRadius;
+
+  next_waypoint();
+  
+  target_->current_target(target_goal_);
+  target_pos_ = target_goal_;
+  target_vel_ = TooN::Zeros;
+
+  // camera_pos_ represents the actual world camera coords
+  orbit2cam();
   camera_vel_ = TooN::Zeros;
 
   num_attempts_ = 10;
   num_attempts_until_bounce_ = std::max(static_cast<int>(0.9 * num_attempts_), 1);
 
-  max_orbit_speed_ = TooN::makeVector(0.5,0.2,0.1);
-  orbit_accel_ = TooN::makeVector(0.7,0.5,0.05);
-  min_radius_ = 0.7;
-  max_radius_ = 2.5;
+  // max_orbit_speed_ = TooN::makeVector(0.5,0.2,0.1);
+  // orbit_accel_ = TooN::makeVector(0.7,0.5,0.05);
+  // min_radius_ = 0.7;
+  // max_radius_ = 2.5;
   
   initialized_ = true;
 
   return true;
 }
 
+double
+OrbitGenerator::geodesic_distance()
+{
+  double eq = M_PI/2.0;
+  double phi1 = eq - orbit_pos_[1];
+  double theta1 = orbit_pos_[0];
+  double phi2 = eq - orbit_wp_pos_[1];
+  double theta2 = orbit_wp_pos_[0];
+  double dx = cos(phi2)*cos(theta2) - cos(phi1)*cos(theta1);
+  double dy = cos(phi2)*sin(theta2) - cos(phi1)*sin(theta1);
+  double dz = sin(phi2) - sin(phi1);
+  double C = sqrt(dx*dx + dy*dy + dz*dz);
+  double ds = 2.0 * asin(C/2.0);
+  return orbit_pos_[2] * ds;
+}
+
+bool near(double a, double b, double tol = 1e-3)
+{
+  return fabs(a-b) < tol;
+}
+
+bool near(TooN::Vector<3>& a, TooN::Vector<3>& b, double tol = 1e-3)
+{
+  double d = TooN::norm(a-b);
+  return d < tol;
+}
+
+void
+OrbitGenerator::next_waypoint()
+{
+  curr_pose_++;
+  // find the next sphere waypoint
+  orbit_wp_pos_[0] = unif_(re_) * 2 * M_PI;
+  orbit_wp_pos_[1] = unif_(re_) * M_PI/2.0;
+  orbit_wp_pos_[2] = unif_(re_)*(max_radius_-min_radius_)+min_radius_;
+  state_ = ChangeRadius;
+}
+
 Pose
 OrbitGenerator::step(const float timestep)
 {
+  if (state_ == ChangeRadius) {
+    if (!near(orbit_wp_pos_[2],orbit_pos_[2])) {
+      state_ = ChangeRadius;      
+    } else {
+      state_ = OnSphere;
+      // compute the total geodesic distance
+      Vector a, b;
+      sph2cart(orbit_pos_, a);
+      sph2cart(orbit_wp_pos_, b);
+      
+      dist_ = geodesic_distance();
+    }
+  }
+  
   if (initialized_) {
     if (steps_ != 0) {
       update_target(timestep, target_pos_, target_vel_);
@@ -87,7 +188,7 @@ OrbitGenerator::set_max_speed(float max_speed)
 void
 OrbitGenerator::set_max_acceleration(float max_accel)
 {
-  max_acceleration_ = max_accel;
+  max_accel_ = max_accel;
 }
 
 void
@@ -170,93 +271,72 @@ OrbitGenerator::update_camera(float timestep, Vector& position, Vector& velocity
 {  
   // if it's on the sphere, then we do the orbital thing, if it's off the sphere,
   // we move towards the new sphere
-  Vector sph;
-  Vector delta = target_pos_ - position;
-  cart2sph(delta, sph);
-  float radius = TooN::norm(delta);
-  if (target_changed_ == false &&
-      radius - max_radius_ <= 0
-      && radius - min_radius_ >= 0) {
-    std::cout << "Orbiting... " << std::endl;
-    // we're basically on the sphere
-    // update the orbit
-    Vector tmp_pos(orbit_pos_);
-    Vector tmp_vel(orbit_vel_);
-    Vector force = orbit_accel_;
-    tmp_vel += (timestep * force);
-    Vector tmp_cart;
-    update_euclidean(timestep, tmp_pos, tmp_vel, tmp_cart, velocity);
-    
-    if (!collision_checker_->collided(position, tmp_cart)) {
-      orbit_pos_ = tmp_pos;
-      orbit_vel_ = tmp_vel;
-    } else {      
-      tmp_vel[0] = -tmp_vel[0];
-      while (collision_checker_->collided(position, tmp_cart)) {
-        update_euclidean(timestep, tmp_pos, tmp_vel, tmp_cart, velocity);
-      }
-      orbit_pos_ = tmp_pos;
-      orbit_vel_ = tmp_vel;
-    }
+  std::cout << "Orbiting... " << std::endl;
+  // we're basically on the sphere
+  // update the orbit
 
+  Vector tmp_pos;
+  float tmp_vel = orbit_vel_;
+  sph2cart(orbit_pos_, tmp_pos);
+  std::cout << "tmp_pos: " << tmp_pos << std::endl;
+  
+  if (state_ == ChangeRadius) {
+    double diff = orbit_wp_pos_[2] - orbit_pos_[2];
+    
+    // move along the normal
+    tmp_vel = std::min<double>(tmp_vel + timestep*2*max_accel_,
+                               std::min<double>(max_speed_,fabs(diff)+1e-2));
+    Vector normal = TooN::unit(tmp_pos);    
+    velocity = normal * std::copysign(tmp_vel,diff);
+    tmp_pos = tmp_pos + timestep * velocity;
+    // object to world
+    position = tmp_pos + target_pos_;
+
+    orbit_vel_ = tmp_vel;
+    cart2sph(tmp_pos, orbit_pos_);
+  } else if (state_ == OnSphere) {
+    Vector tmp_wp;
+    sph2cart(orbit_wp_pos_, tmp_wp);
+    double diff = geodesic_distance();
+    // we will do the simplest thing possible here... and estimate the next pose
+    // based on the tangent to the sphere.
+    Vector norm = TooN::unit(tmp_pos);
+    Vector to_plane = norm*(tmp_pos - tmp_wp) * norm;
+    Vector tangent = TooN::unit(tmp_wp + to_plane - tmp_pos); 
+    std::cout << "tangent: " << tangent << std::endl;
+    tmp_vel = std::min<double>(std::min<double>(max_speed_,diff+1e-4),
+                               tmp_vel + timestep*max_accel_*0.5);
+    tmp_pos = TooN::unit(tmp_vel * tangent + tmp_pos) * orbit_pos_[2];
+    std::cout << "tmp_pos: " << tmp_pos << std::endl;
+    position = tmp_pos + target_pos_;
+
+    orbit_vel_ = tmp_vel;
+    cart2sph(tmp_pos, orbit_pos_);
+  }
+
+  Vector wp;
+  sph2cart(orbit_wp_pos_, wp);
+  // find out if we are near the wp
+  if (near(wp, tmp_pos, 0.002)) {
+    next_waypoint();
+    state_ = ChangeRadius;
   } else {
-    std::cout << "Moving to target..." << std::endl;
-    float vel_squared = TooN::norm_sq(velocity);
-    Vector drag = TooN::Zeros;
-    if (vel_squared > 1.0e-12) {
-      drag = -TooN::unit(velocity) * (0.5 * 1.204 * 0.09 * drag_ * vel_squared);
-    }
-    // we move towards the sphere using the Euclidean vector towards the target
-    Vector tmp_pos(position);
-    Vector tmp_vel(velocity);
-    Vector force = max_acceleration_ * TooN::unit(target_pos_ - tmp_pos);
-    tmp_vel += (force + drag) * timestep;
-    float scale = TooN::norm(tmp_vel) / max_speed_;
-    if (scale > 1.0) {
-      tmp_vel /= scale;
-    }
-    tmp_pos += timestep * tmp_vel;
-    if (!collision_checker_->collided(position, tmp_pos)) {
-      velocity = tmp_vel;
-      position = tmp_pos;
-      cart2sph(position - target_pos_, orbit_pos_);
-      orbit_vel_ = TooN::Zeros;
-    }
+    std::cout << std::endl;
+    std::cout << "tmp_vel     : " << tmp_vel << std::endl;
+    std::cout << "not near yet: " << orbit_pos_ << std::endl;
+    std::cout << "orbit_wp    : " << orbit_wp_pos_ << std::endl;
+    std::cout << "tmp_pos     : " << tmp_pos << std::endl;
+    std::cout << "wp          : " << wp << std::endl;
+    std::cout << "geo_dist    : " << geodesic_distance() << std::endl;
+    std::cout << "euc_obj_dist: " << TooN::norm(wp-tmp_pos) << std::endl;
+    std::cout << "target_pose : " << target_pos_ << std::endl;
+    std::cout << "state       : " << state_ << std::endl;
   }
 }
 
 void
 OrbitGenerator::update_target(float timestep, Vector& position, Vector& velocity)
 {
-  float vel_squared = TooN::norm_sq(velocity);
-  Vector drag = TooN::Zeros;
-  if (vel_squared > 1.0e-12) {
-    drag = -TooN::unit(velocity) * (0.5 * 1.204 * 0.09 * drag_ * vel_squared);
-  }
-
-  Vector new_target;
-  target_->current_target(new_target);
-  if (TooN::norm(new_target - target_goal_) > 0.01) {
-    target_goal_ = new_target;
-    target_changed_ = true;
-  }
-
-  if (TooN::norm(target_pos_ - target_goal_) < 0.01) {
-    target_changed_ = false;
-  }
-  
-  Vector tmp_pos(position);
-  Vector tmp_vel(velocity);
-  Vector applied_force;
-  applied_force = max_acceleration_ * TooN::unit(target_goal_ - target_pos_);;    
-  
-  tmp_vel += (timestep * (drag + applied_force));
-  float scale_factor = TooN::norm(tmp_vel) / max_speed_;
-  if (scale_factor > 1.0) {
-    tmp_vel /= scale_factor;    
-  }
-  tmp_pos += (timestep * tmp_vel);
-  velocity = tmp_vel;
-  position = tmp_pos;
-
+  position = target_pos_;
+  velocity = target_vel_;
 }

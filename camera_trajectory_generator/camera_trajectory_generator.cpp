@@ -181,7 +181,7 @@ public:
     models_path.push_back(layout_fileName);
 
     layout_fileName  = scenenet_layouts+layout_fileName;
-
+    std::cout << "layout file: " << layout_fileName <<std::endl;
     AssimpObjLoader room_layout(layout_fileName);
     number_of_vertices_x3_shape = room_layout.get_numVertes_submeshes();
     shape_vertices = room_layout.get_shape_vertices();
@@ -196,9 +196,12 @@ public:
     // everything starts at 1,
     // since they used models_path[0] for layout
     TooN::SE3<>T_wc;
+    TooN::Vector<3> bbmin, bbmax;
     float scale;
     scales_of_objects.push_back(1.0f);
     transformations_of_objects.push_back(T_wc);
+    object_bbmin.push_back(bbmin);
+    object_bbmax.push_back(bbmax);
     object_names_.push_back("");
 
     std::string wnid = "";
@@ -216,7 +219,9 @@ public:
       object_names_.push_back(obj_name);
       mylayoutfile >> scale;
       scales_of_objects.push_back(scale);
-
+      mylayoutfile >> bbmin >> bbmax; // read the bounding box
+      object_bbmin.push_back(bbmin);
+      object_bbmax.push_back(bbmax);
       mylayoutfile >> T_wc;
       transformations_of_objects.push_back(T_wc);
       std::cout<<"T_wc = " << T_wc << std::endl;
@@ -638,9 +643,9 @@ public:
     std::cout << "    size for <" << id << ">: " << size << std::endl;
     std::cout << "centroid for <" << id << ">: " << centroid << std::endl;
     TooN::SE3<> T = transformations_of_objects[id];
-    auto t = T.get_translation();
-    std::cout << "translation: " << t << std::endl;
-    return centroid + t;
+    //auto t = T.get_translation();
+    //std::cout << "translation: " << t << std::endl;
+    return T * centroid ;
   }
   
   TooN::Vector<3>  random_object_pose(std::string focus_class)
@@ -666,6 +671,8 @@ public:
   std::vector< float > scales_of_objects;
   std::vector< std::string > models_path;
   std::vector< TooN::SE3<> > transformations_of_objects;
+  std::vector< TooN::Vector<3> > object_bbmin;
+  std::vector< TooN::Vector<3> > object_bbmax;  
   std::vector< std::string > wnids_model;
   std::vector< std::string > object_names_;
   std::vector< std::vector<float> > min_max_bbs;
@@ -723,6 +730,43 @@ public:
   }
 private:
   Scene* thescene_;
+};
+
+////////////////////////////////////////////////////////////////////////////////
+// Sphere Focus Interface (single object)
+class SphereFocus : public FocusTargetInterface
+{
+  std::vector<std::string> objclasses_;
+  std::string objclass_;
+  Scene* scene_;
+  std::default_random_engine re_;
+  TrajGenPtr trajGen_;
+  int max_targets_;
+  int target_id_;
+  
+  SphereFocus(const std::vector<std::string>& focus,
+              Scene* scene, std::default_random_engine& re,
+              TrajGenPtr& trajGen,
+              int num_targets = 20)
+    : objclasses_(focus),
+      scene_(scene),
+      re_(re),
+      trajGen_(trajGen),
+      max_targets_(num_targets),
+      target_id_(0)
+  {
+    
+  }
+
+  void step(float delta)
+  {
+    
+  }
+  
+  void current_target(TooN::Vector<3>& target)
+  {
+    
+  }
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -847,7 +891,7 @@ main(int argc, char* argv[])
   }
 
   //GL::glutInit(&argc, argv);
-  bool use_orbit = false;
+  bool use_orbit = true;
   int w_width  = 640;
   int w_height = 480;
   const int UI_WIDTH = 150;
@@ -965,13 +1009,19 @@ main(int argc, char* argv[])
     trajGen.reset(t);
   } else {
     OrbitGenerator* o = new OrbitGenerator(collision_interface, focus);
-    o->set_max_speed(3.0);
-    o->set_max_acceleration(0.9);
-    o->set_radius_range(2.5, 0.9);
-    o->set_max_orbit_speed(TooN::makeVector(1.0,0.5,0.5));
-    o->set_orbit_accel(TooN::makeVector(1.5,1.0,0.5));
-    std::uniform_real_distribution<> rand_radius(0.9, 2.5);
-    o->init(rand_radius(mt), room_center);
+    // o->set_max_speed(3.0);
+    // o->set_max_acceleration(0.9);
+    // o->set_radius_range(2.5, 0.9);
+    // o->set_max_orbit_speed(TooN::makeVector(1.0,0.5,0.5));
+    // o->set_orbit_accel(TooN::makeVector(1.5,1.0,0.5));
+    // std::uniform_real_distribution<> rand_radius(0.9, 2.5);
+    // o->init(rand_radius(mt), room_center);
+
+    TooN::Vector<3> obj_diag = myscene.object_bbmax[1] - myscene.object_bbmin[1];
+    double obj_dim = TooN::norm(obj_diag)/1.2;
+    double room_dim = std::min(room_size[0], std::min(room_size[1],room_size[2])) / 1.7;
+    std::cout << "Orbit radius bounds: " << obj_dim << " - " << room_dim << std::endl;
+    o->init(obj_dim, room_dim);
     trajGen.reset(o);
   }
   
@@ -1120,8 +1170,8 @@ main(int argc, char* argv[])
     TooN::Vector<3>look_dir = lookAt - eye;
     TooN::normalize(look_dir);
     TooN::Vector<3>up_vec   = TooN::makeVector(0.0f,-1.0f,0.0f);
-    TooN::Vector<3>right = look_dir ^ up_vec;
-    TooN::Vector<3>newup = look_dir ^ right;
+    TooN::Vector<3>right = TooN::unit(look_dir ^ up_vec);
+    TooN::Vector<3>newup = TooN::unit(look_dir ^ right);
 
     /// Draw Camera
     TooN::Matrix<3>RotMat = TooN::Zeros(3);
@@ -1129,6 +1179,11 @@ main(int argc, char* argv[])
     RotMat.T()[1] = newup;
     RotMat.T()[2] = look_dir;
 
+    std::cout << "look_dir: " << look_dir << std::endl;
+    std::cout << "new up  : " << newup << std::endl;
+    std::cout << "right   : " << right << std::endl;
+    std::cout << "RotMat: \n" << RotMat << std::endl;
+    
     se3_pose = TooN::SE3<>(TooN::SO3<>(RotMat),eye);
 
     if (render_camera_view) {

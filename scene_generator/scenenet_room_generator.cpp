@@ -44,6 +44,8 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/split.hpp>
 
+#include "cmdparser.hpp"
+
 using namespace chrono;
 using namespace chrono::geometry;
 using namespace chrono::irrlicht;
@@ -471,6 +473,7 @@ struct RandomObject {
   std::shared_ptr<ChBody> physics_body;
   ChVector<> pos;
   ChMatrix33<> rot;
+  ChVector<> bbmin, bbmax;
 };
 
 RandomObject
@@ -614,6 +617,9 @@ add_object(ChSystem& system, RandomObject& object, ChVector<> pos, double mass =
     }
     ChVector<> bbmin(xmin,ymin,zmin);
     ChVector<> bbmax(xmax,ymax,zmax);
+    object.bbmin = bbmin;
+    object.bbmax = bbmax;
+    
     center = (bbmax + bbmin) * 0.5;
     const double desired_y_size = height;
     double y_size = bbmax.y - bbmin.y;
@@ -702,26 +708,33 @@ void parse_string_csv(const std::string& csv, std::vector<std::string>& v)
   }
 }
 
+void configure_parser(cli::Parser& p)
+{
+  p.set_required<std::string>("sn", "shapenet", "Directory of ShapeNet models");
+  p.set_required<std::string>("l", "layouts", "Directory of environment layouts");
+  p.set_optional<std::string>("o", "output_dir", "/tmp", "Directory for output file(s)");
+  p.set_optional<std::string>("f", "focus_object", "", "A CSV (no spaces) list of object classes to use as focus objects");
+  p.set_optional<bool>("s", "single_mode", false, "Use a single object only");
+}
+
 int main(int argc, char* argv[])
-{ 
-  if (argc < 4) {
-    std::cout<<"Too few arguments"<<std::endl;
-    std::cout<<"./scenenet_room_generator /path/to/ShapeNet/ /path/to/SceneNetLayouts/ output_dir focus_object?"<<std::endl;
-    std::cout<<"Note that the folders should be followed by trailing / in the command"<<std::endl;
-    exit(1);
-  }
-  std::string shapenets_dir = std::string(argv[1]);
+{
+  cli::Parser parser(argc, argv);
+  configure_parser(parser);
+  parser.run_and_exit_if_error();  
+  
+  std::string shapenets_dir = parser.get<std::string>("sn");
   std::cout<<"ShapeNet directory:"<<shapenets_dir<<std::endl;
-  std::string layouts_dir = std::string(argv[2]);
+  std::string layouts_dir = parser.get<std::string>("l");
   std::cout<<"Layouts directory:"<<layouts_dir<<std::endl;
-  std::string output_dir = std::string(argv[3]);  
-  std::string focus_object = "";
+  std::string output_dir = parser.get<std::string>("o");
+  std::string focus_object = parser.get<std::string>("f");
   std::vector<std::string> focus_objects;
-  if (argc == 5) {
-    focus_object = std::string(argv[4]);
+  if (focus_object != "") {
     std::cout << "Focus object tag: " << focus_object << std::endl;
     parse_string_csv(focus_object, focus_objects);
   }
+  bool single_mode = parser.get<bool>("s");
 
   if (!bfs::exists(output_dir)) {
     bfs::path d(output_dir);
@@ -845,32 +858,61 @@ int main(int argc, char* argv[])
 
   std::cout<<"layout type:"<<scene_type<<std::endl;
 
-  for (int object_id = 0; object_id < num_large_objects; object_id++) {
-    //Choose uniform random position
-    RandomObject this_object = get_random_object(mt,myobjscaling,myshapenetmodel,scene_type,true);
-
-    double x = bbmin.x + uniform_dist_xz(mt) * (bbmax.x - bbmin.x);
-    double y = bbmin.y + uniform_dist_y(mt) * (bbmax.y - bbmin.y) * 0.5;
-    double z = bbmin.z + uniform_dist_xz(mt) * (bbmax.z - bbmin.z);
-    std::cout<<"object position:"<<x<<" "<<y<<" "<<z<<" "<<std::endl;
-
-    auto mass = mass_dist(mt);
-    auto object_physics_body = add_object(mphysicalSystem,this_object,ChVector<>(x,y,z),
-                                          mass);
-    if (object_physics_body) {
-      this_object.physics_body = object_physics_body;
-      objects.push_back(this_object);
+  if (single_mode) {
+    RandomObject this_object;
+    if (focus_objects.size() > 0) {
+      this_object = get_random_object(mt,myobjscaling,myshapenetmodel,focus_object);
     } else {
-      std::cout<<"Not pushing back object"<<std::endl;
+      this_object = get_random_object(mt,myobjscaling,myshapenetmodel,scene_type,false);      
     }
-  }
+    double x = bbmin.x + 0.5 * (bbmax.x - bbmin.x); // right in the middle
+    double y = bbmin.y + 0.5 * (bbmax.y - bbmin.y);
+    double z = bbmin.z + 0.5 * (bbmax.z - bbmin.z);
+    auto mass = mass_dist(mt);
+    auto object_physics_body = add_object(mphysicalSystem,this_object,ChVector<>(x,y,z),mass);
+    this_object.physics_body = object_physics_body;
+    objects.push_back(this_object);    
+  } else {  
+    for (int object_id = 0; object_id < num_large_objects; object_id++) {
+      //Choose uniform random position
+      RandomObject this_object = get_random_object(mt,myobjscaling,myshapenetmodel,scene_type,true);
 
-  if (focus_objects.size() > 0) {
-    std::uniform_real_distribution<double> small_dist(0.5, 3.0);
-    const int num_small_objects = std::max(1,std::min(2,number_of_objects(scene,small_dist(mt))));
-    for (auto& focus_object : focus_objects) {
+      double x = bbmin.x + uniform_dist_xz(mt) * (bbmax.x - bbmin.x);
+      double y = bbmin.y + uniform_dist_y(mt) * (bbmax.y - bbmin.y) * 0.5;
+      double z = bbmin.z + uniform_dist_xz(mt) * (bbmax.z - bbmin.z);
+      std::cout<<"object position:"<<x<<" "<<y<<" "<<z<<" "<<std::endl;
+
+      auto mass = mass_dist(mt);
+      auto object_physics_body = add_object(mphysicalSystem,this_object,ChVector<>(x,y,z),
+                                            mass);
+      if (object_physics_body) {
+        this_object.physics_body = object_physics_body;
+        objects.push_back(this_object);
+      } else {
+        std::cout<<"Not pushing back object"<<std::endl;
+      }
+    }
+
+    if (focus_objects.size() > 0) {
+      std::uniform_real_distribution<double> small_dist(0.5, 3.0);
+      const int num_small_objects = std::max(1,std::min(2,number_of_objects(scene,small_dist(mt))));
+      for (auto& focus_object : focus_objects) {
+        for (int object_id = 0; object_id < num_small_objects; object_id++) {
+          RandomObject this_object = get_random_object(mt,myobjscaling,myshapenetmodel,focus_object);
+          double x = bbmin.x + uniform_dist_xz(mt) * (bbmax.x - bbmin.x);
+          double y = bbmin.y + uniform_dist_y(mt) * (bbmax.y - bbmin.y);
+          double z = bbmin.z + uniform_dist_xz(mt) * (bbmax.z - bbmin.z);
+          auto object_physics_body = add_object(mphysicalSystem,this_object,ChVector<>(x,y,z),0.1);
+          this_object.physics_body = object_physics_body;
+          objects.push_back(this_object);
+        }
+      }
+    } else {  
+      std::uniform_real_distribution<double> small_dist(0.5, 3.0);
+      const int num_small_objects = std::max(5,std::min(15,number_of_objects(scene,small_dist(mt))));
       for (int object_id = 0; object_id < num_small_objects; object_id++) {
-        RandomObject this_object = get_random_object(mt,myobjscaling,myshapenetmodel,focus_object);
+        //Choose uniform random position
+        RandomObject this_object = get_random_object(mt,myobjscaling,myshapenetmodel,scene_type,false);
         double x = bbmin.x + uniform_dist_xz(mt) * (bbmax.x - bbmin.x);
         double y = bbmin.y + uniform_dist_y(mt) * (bbmax.y - bbmin.y);
         double z = bbmin.z + uniform_dist_xz(mt) * (bbmax.z - bbmin.z);
@@ -878,19 +920,6 @@ int main(int argc, char* argv[])
         this_object.physics_body = object_physics_body;
         objects.push_back(this_object);
       }
-    }
-  } else {  
-    std::uniform_real_distribution<double> small_dist(0.5, 3.0);
-    const int num_small_objects = std::max(5,std::min(15,number_of_objects(scene,small_dist(mt))));
-    for (int object_id = 0; object_id < num_small_objects; object_id++) {
-      //Choose uniform random position
-      RandomObject this_object = get_random_object(mt,myobjscaling,myshapenetmodel,scene_type,false);
-      double x = bbmin.x + uniform_dist_xz(mt) * (bbmax.x - bbmin.x);
-      double y = bbmin.y + uniform_dist_y(mt) * (bbmax.y - bbmin.y);
-      double z = bbmin.z + uniform_dist_xz(mt) * (bbmax.z - bbmin.z);
-      auto object_physics_body = add_object(mphysicalSystem,this_object,ChVector<>(x,y,z),0.1);
-      this_object.physics_body = object_physics_body;
-      objects.push_back(this_object);
     }
   }
 
@@ -978,6 +1007,10 @@ int main(int argc, char* argv[])
     ofile << this_object.wnid <<std::endl;
     ofile << myshapenetmodel.get_sunrgbd_object_mapping(this_object.wnid) << std::endl;
     ofile << this_object.size <<std::endl;
+    ofile << this_object.bbmin.x << " " << this_object.bbmin.y << " " << this_object.bbmin.z
+          << " " 
+          << this_object.bbmax.x << " " << this_object.bbmax.y << " " << this_object.bbmax.z
+          << std::endl;
     ofile << myRot(0)<<" "<<myRot(1)<<" "<<myRot(2) <<" "<<mypos.x<<std::endl;
     ofile << myRot(3)<<" "<<myRot(4)<<" "<<myRot(5) <<" "<<mypos.y<<std::endl;
     ofile << myRot(6)<<" "<<myRot(7)<<" "<<myRot(8) <<" "<<mypos.z<<std::endl;
