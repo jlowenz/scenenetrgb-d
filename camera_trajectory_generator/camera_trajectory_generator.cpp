@@ -379,10 +379,12 @@ public:
         TooN::Vector<3>center = 0.5f * TooN::makeVector(min_max_bb.at(1)+min_max_bb.at(0),
                                                         (min_max_bb.at(3)+min_max_bb.at(2)),
                                                         min_max_bb.at(5)+min_max_bb.at(4));
-        center[1] = center[1] - size[1]*0.4f;
         if (objs == 0) {
           center = center*0.0f;
+        } else {
+          center[1] = center[1] - size[1]*0.2f;
         }
+
         int num_meshes = number_of_vertices_x3_shape.size();
         TooN::SE3<>T_wc = transformations_of_objects.at(objs);
         TooN::SO3<>RMat = T_wc.get_rotation();
@@ -390,7 +392,7 @@ public:
         if (objs == 0)
           scale = 1.0f;
         std::cout<<"objs: " << objs << ", scale = " << scale << std::endl;
-        TooN::Vector<3>translation = T_wc.get_translation();
+        TooN::Vector<3>& translation = T_wc.get_translation();
         std::cout<<"Num meshes"<<num_meshes<<std::endl;
         for(int i = 0 ; i < num_meshes ;i++) {
           float * shape_vertices_copy = new float[number_of_vertices_x3_shape.at(i)];
@@ -639,7 +641,8 @@ public:
     TooN::Vector<3> centroid = TooN::makeVector((bb[0]+bb[1])/2.0,
                                                 (bb[2]+bb[3])/2.0,
                                                 (bb[4]+bb[5])/2.0);
-    centroid[1] = centroid[1] + size[1]*0.4f;
+    std::cout << "centroid for <" << id << ">: " << centroid << std::endl;
+    centroid[1] = centroid[1] + size[1]*0.2;
     std::cout << "    size for <" << id << ">: " << size << std::endl;
     std::cout << "centroid for <" << id << ">: " << centroid << std::endl;
     TooN::SE3<> T = transformations_of_objects[id];

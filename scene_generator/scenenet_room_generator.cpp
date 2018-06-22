@@ -25,6 +25,7 @@
 #include "chrono/physics/ChSystem.h"
 #include "chrono/physics/ChSystemDEM.h"
 //#include "chrono/solver/ChSolverDEM.h"
+#include "chrono/solver/ChSolver.h"
 #include "chrono/solver/ChSolverAPGD.h"
 #include "chrono_irrlicht/ChIrrApp.h"
 
@@ -594,6 +595,7 @@ add_object(ChSystem& system, RandomObject& object, ChVector<> pos, double mass =
   std::string model_name = object.model;
   ChVector<> bbmin, bbmax;
   ChTriangleMeshConnected mmesh;
+  //ChTriangleMeshConnected& mmesh = *mmeshp;
 
   mmesh.LoadWavefrontMesh(model_name,false,false);
   ChVector<> center;
@@ -624,7 +626,7 @@ add_object(ChSystem& system, RandomObject& object, ChVector<> pos, double mass =
     const double desired_y_size = height;
     double y_size = bbmax.y - bbmin.y;
     if (cog_below) {
-      center.y -= (y_size * 0.4);
+      center.y -= (y_size * 0.2);
     }
     scale_factor = (desired_y_size / y_size);
     double z_size = scale_factor * (bbmax.z - bbmin.z);
@@ -634,6 +636,9 @@ add_object(ChSystem& system, RandomObject& object, ChVector<> pos, double mass =
       std::cout<<" Too Big! Skipping"<<std::endl;
       return std::shared_ptr<ChBody>();
     }
+
+    object.bbmin *= scale_factor;
+    object.bbmax *= scale_factor;
   }
 
   mmesh.Transform(-center*scale_factor , ChMatrix33<>(scale_factor)); // scale to a smaller cube
@@ -648,13 +653,13 @@ add_object(ChSystem& system, RandomObject& object, ChVector<> pos, double mass =
   mfalling->SetInertia(mass);
   mfalling->GetCollisionModel()->ClearModel();
   if (triangle_collision) {
-    mfalling->GetCollisionModel()->AddTriangleMesh(mmesh,false, false, VNULL, ChMatrix33<>(1), 0.005);
+    mfalling->GetCollisionModel()->AddTriangleMesh(mmesh,false, false, ChVector<>(0),ChMatrix33<>(1));
   } else {
     mfalling->GetCollisionModel()->AddConvexHull(mmesh.getCoordsVertices(),ChVector<>(0),ChMatrix33<>(1));
   }
   mfalling->GetCollisionModel()->BuildModel();
   mfalling->SetCollide(true);
-  mfalling->GetTotalAABB(bbmin,bbmax);
+  mfalling->GetTotalAABB(object.bbmin,object.bbmax);
   system.Add(mfalling);
 
   auto masset_mesh = std::make_shared<ChTriangleMeshShape>();
@@ -755,7 +760,7 @@ int main(int argc, char* argv[])
   ChSystem mphysicalSystem(false,1000,20);
   // No bouncing
   mphysicalSystem.SetMinBounceSpeed(1.0);
-  //mphysicalSystem.SetSolverType(::chrono::ChSolver::Type::APGD);
+  mphysicalSystem.SetSolverType(::chrono::ChSystem::SOLVER_APGD);
 
   // Create the Irrlicht visualization (open the Irrlicht device,
   // bind a simple user interface, etc. etc.)
@@ -777,7 +782,7 @@ int main(int argc, char* argv[])
   // End visualisation code
 
   // Create all the rigid bodies.
-  collision::ChCollisionModel::SetDefaultSuggestedEnvelope(0.01);
+  collision::ChCollisionModel::SetDefaultSuggestedEnvelope(0.001);
   collision::ChCollisionModel::SetDefaultSuggestedMargin(0.0025);
 
   // - Create a floor
@@ -809,8 +814,8 @@ int main(int argc, char* argv[])
   }
   
   // Pick random layout
-  //  std::uniform_int_distribution<> layout_dist(0,layout_paths.size()-1);
-  std::uniform_int_distribution<> layout_dist(0,13); // livingroom + bedroom
+  //std::uniform_int_distribution<> layout_dist(0,layout_paths.size()-1);
+  std::uniform_int_distribution<> layout_dist(0,12); // livingroom + bedroom
   int layout_int = layout_dist(mt);
   std::cout<<"Selecting from:"<<layout_int<<std::endl;
   std::cout<<"Picking random "<< layout_paths.size()-1<<std::endl;
@@ -852,7 +857,7 @@ int main(int argc, char* argv[])
                                 "../textfiles/wnid_sample_probabilities.txt",mt);
 
   std::uniform_real_distribution<double> large_dist(0.1, 0.5);
-  std::uniform_real_distribution<double> mass_dist(15,50);
+  std::uniform_real_distribution<double> mass_dist(20,50);
   //const int num_large_objects = std::max(1,std::min(3,number_of_objects(scene,large_dist(mt))));
   const int num_large_objects = 2;
 
@@ -968,6 +973,7 @@ int main(int argc, char* argv[])
   std::string filename_path = make_filename(output_dir + "scene_description");
   std::ofstream ofile(filename_path);
   ofile << "layout_file:"<<layout_paths[layout_int]<<std::endl;
+  int valid = 0;
   for(auto object : objects) {
     RandomObject& this_object = object;
     std::shared_ptr<ChBody>body = this_object.physics_body;
@@ -1008,14 +1014,17 @@ int main(int argc, char* argv[])
     ofile << myshapenetmodel.get_sunrgbd_object_mapping(this_object.wnid) << std::endl;
     ofile << this_object.size <<std::endl;
     ofile << this_object.bbmin.x << " " << this_object.bbmin.y << " " << this_object.bbmin.z
-          << " " 
-          << this_object.bbmax.x << " " << this_object.bbmax.y << " " << this_object.bbmax.z
-          << std::endl;
-    ofile << myRot(0)<<" "<<myRot(1)<<" "<<myRot(2) <<" "<<mypos.x<<std::endl;
+          << " " << this_object.bbmax.x << " " << this_object.bbmax.y << " "
+          << this_object.bbmax.z << std::endl;
+    ofile << myRot(0)<<" "<<myRot(1)<<" "<<myRot(2) <<" "<<mypos.x << std::endl;
     ofile << myRot(3)<<" "<<myRot(4)<<" "<<myRot(5) <<" "<<mypos.y<<std::endl;
     ofile << myRot(6)<<" "<<myRot(7)<<" "<<myRot(8) <<" "<<mypos.z<<std::endl;
     std::cout<<std::endl;
     std::cout<<"x:"<<mypos.x<<" y:"<<mypos.y<<" z:"<<mypos.z<<std::endl;
+    valid++;
+  }
+  if (valid <= (objects.size()/2)) {
+    return -1;
   }
   return 0;
 }

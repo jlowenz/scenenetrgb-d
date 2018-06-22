@@ -50,6 +50,7 @@ class Material;
 
 struct ObjectInfo {
   std::string object_id;
+  std::string wnid;
   float scale;
   optix::Matrix4x4 transform;
 };
@@ -69,7 +70,8 @@ public:
     virtual unsigned int getNumTriangles() const;
     virtual AAB getSceneAABB() const;
 
-    void loadSceneMaterials(const std::string& file_base_name,
+    void loadSceneMaterials(const ObjectInfo& object,
+                            const std::string& file_base_name,
                             const aiScene* m_scene,bool separate_materials=false);
 
     bool colorHasAnyComponent(const aiColor3D & color) {

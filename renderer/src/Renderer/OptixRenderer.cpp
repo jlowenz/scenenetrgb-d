@@ -366,10 +366,10 @@ void OptixRenderer::render(const SceneNetCamera& camera, const std::pair<TooN::V
   }
 
   const int num_iterations = m_num_iterations;
-  const float ppmDecay      = 1.0;
+  const float ppmDecay      = 0.9;
   const float ppmMinRadius  = 0.001;
   // For slower renderings with reduced photon artifacts increase this to 0.05
-  const float initppmRadius = 0.01;
+  const float initppmRadius = 0.05;
   float ppmRadius           = initppmRadius;
   m_context["numIterationsSqrt"]->setUint(num_iterations);
   m_context["resDownsample"]->setUint((unsigned int)RES_DOWNSAMPLE);

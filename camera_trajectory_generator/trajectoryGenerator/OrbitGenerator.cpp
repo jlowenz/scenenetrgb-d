@@ -52,6 +52,8 @@ OrbitGenerator::OrbitGenerator(CollisionInterfacePtr collision_checker,
   : collision_checker_(collision_checker),
     target_(target),
     re_((std::random_device())()),
+    theta_(0,2.0*M_PI),
+    phi_(0.3, M_PI/2.0),
     max_poses_(num_poses),
     curr_pose_(0)
 {
@@ -79,11 +81,13 @@ OrbitGenerator::init(float min_radius, float max_radius, float speed, float acce
   max_accel_ = accel;
   float init_radius = unif_(re_)*(max_radius - min_radius) + min_radius;
 
+  
+  
   // orbit_pos_ represents the current point on the sphere
   // choose some az between 0, 2pi
-  orbit_pos_[0] = unif_(re_) * 2 * M_PI;
+  orbit_pos_[0] = theta_(re_);
   // choose some el between 0, pi/2
-  orbit_pos_[1] = unif_(re_) * M_PI/2.0;
+  orbit_pos_[1] = phi_(re_);
   // start with the init radius
   orbit_pos_[2] = init_radius;
   orbit_vel_ = 0;
@@ -144,8 +148,8 @@ OrbitGenerator::next_waypoint()
 {
   curr_pose_++;
   // find the next sphere waypoint
-  orbit_wp_pos_[0] = unif_(re_) * 2 * M_PI;
-  orbit_wp_pos_[1] = unif_(re_) * M_PI/2.0;
+  orbit_wp_pos_[0] = theta_(re_);
+  orbit_wp_pos_[1] = phi_(re_); 
   orbit_wp_pos_[2] = unif_(re_)*(max_radius_-min_radius_)+min_radius_;
   state_ = ChangeRadius;
 }
@@ -284,7 +288,7 @@ OrbitGenerator::update_camera(float timestep, Vector& position, Vector& velocity
     double diff = orbit_wp_pos_[2] - orbit_pos_[2];
     
     // move along the normal
-    tmp_vel = std::min<double>(tmp_vel + timestep*2*max_accel_,
+    tmp_vel = std::min<double>(tmp_vel + timestep*4*max_accel_,
                                std::min<double>(max_speed_,fabs(diff)+1e-2));
     Vector normal = TooN::unit(tmp_pos);    
     velocity = normal * std::copysign(tmp_vel,diff);
@@ -305,7 +309,7 @@ OrbitGenerator::update_camera(float timestep, Vector& position, Vector& velocity
     Vector tangent = TooN::unit(tmp_wp + to_plane - tmp_pos); 
     std::cout << "tangent: " << tangent << std::endl;
     tmp_vel = std::min<double>(std::min<double>(max_speed_,diff+1e-4),
-                               tmp_vel + timestep*max_accel_*0.5);
+                               tmp_vel + timestep*max_accel_*0.3);
     tmp_pos = TooN::unit(tmp_vel * tangent + tmp_pos) * orbit_pos_[2];
     std::cout << "tmp_pos: " << tmp_pos << std::endl;
     position = tmp_pos + target_pos_;

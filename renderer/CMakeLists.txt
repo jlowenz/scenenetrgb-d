@@ -23,6 +23,7 @@ FIND_PACKAGE(OptiX REQUIRED)
 FIND_PACKAGE(GLUT REQUIRED)
 FIND_PACKAGE(OpenGL REQUIRED)
 FIND_PACKAGE(ASSIMP REQUIRED)
+find_package(Boost REQUIRED COMPONENTS filesystem)
 
 INCLUDE_DIRECTORIES(
   ${CMAKE_CURRENT_SOURCE_DIR}
@@ -37,6 +38,7 @@ INCLUDE_DIRECTORIES(
   ${OptiX_INCLUDE}
   ${ASSIMP_INCLUDE}
   ${CVD_INCLUDE_DIR}
+  ${Boost_INCLUDE_DIRS}
 )
 
 
@@ -47,7 +49,7 @@ set(RESOURCES_DIR "${CMAKE_CURRENT_SOURCE_DIR}/src/Resources" CACHE PATH "Path t
 set(CUDA_GENERATED_OUTPUT_DIR ${PTX_DIR})
 
 if ( USING_GNU_C AND NOT APPLE)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DM_PI=3.14159265358979323846" )
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DM_PI=3.14159265358979323846" )
 endif()
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/locationConfig.h.in ${CMAKE_CURRENT_BINARY_DIR}/locationConfig.h @ONLY)
@@ -55,10 +57,10 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/Util/sutil/sampleConfig.h.in ${CM
 
 # Path to sutil.h that all the samples need
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/Util/sutil
-                    ${OptiX_INCLUDE}/optixu
-                    ${CMAKE_CURRENT_BINARY_DIR}
-                    ${CUDA_INCLUDE_DIRS} 
-)
+  ${OptiX_INCLUDE}/optixu
+  ${CMAKE_CURRENT_BINARY_DIR}
+  ${CUDA_INCLUDE_DIRS} 
+  )
 
 # Our sutil library.  The rules to build it are found in the subdirectory.
 add_subdirectory(src/Util/sutil)
@@ -83,35 +85,37 @@ file(GLOB trajectory_srcs src/trajectoryGenerator/*.cpp)
 
 
 CUDA_COMPILE_PTX(ptx_shaders ${renderer_ptx_srcs}
-                             ${geometry_ptx_srcs}
-                             ${material_ptx_srcs}
-                             ${generator_ptx_srcs}
-                             ${camera_ptx_srcs}
-                             ${util_ptx_srcs}
-)
+  ${geometry_ptx_srcs}
+  ${material_ptx_srcs}
+  ${generator_ptx_srcs}
+  ${camera_ptx_srcs}
+  ${util_ptx_srcs}
+  )
 
 CUDA_COMPILE(renderer_cuda_objs ${renderer_cuda_srcs})
 link_libraries(${CUDA_LIBRARIES}
-               ${optix_LIBRARY}
-               ${ASSIMP_LIBRARY}
-               ${CVD_LIBRARY}
-               sutil_sdk
-               jpeg
-               png
-              )
+  ${optix_LIBRARY}
+  ${ASSIMP_LIBRARY}
+  ${CVD_LIBRARY}
+  sutil_sdk
+  jpeg
+  png
+  )
 
 add_custom_target(shaders DEPENDS ${ptx_shaders})
 
 # We need C++14 for the latest CVD
 SET(CMAKE_CXX_FLAGS   "${CMAKE_CXX_FLAGS} -O3 -std=c++14 -fext-numeric-literals -D_FORCE_INLINES -fPIC")
 add_executable(scenenet_render src/scenenet_render.cpp 
-                                         ${renderer_cuda_objs}
-                                         ${renderer_srcs}
-                                         ${scene_srcs}
-                                         ${geometry_srcs}
-                                         ${material_srcs}
-                                         ${generator_srcs}
-                                         ${camera_srcs}
-                                         ${math_srcs}
-                                         ${trajectory_srcs})
+  ${renderer_cuda_objs}
+  ${renderer_srcs}
+  ${scene_srcs}
+  ${geometry_srcs}
+  ${material_srcs}
+  ${generator_srcs}
+  ${camera_srcs}
+  ${math_srcs}
+  ${trajectory_srcs})
+target_link_libraries(scenenet_render ${Boost_LIBRARIES})
 add_dependencies(scenenet_render shaders)
+

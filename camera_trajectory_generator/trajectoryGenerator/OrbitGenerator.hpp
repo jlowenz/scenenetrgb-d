@@ -63,6 +63,8 @@ private:
 
   std::default_random_engine re_;
   std::uniform_real_distribution<> unif_;
+  std::uniform_real_distribution<> theta_;
+  std::uniform_real_distribution<> phi_;
 
   int max_poses_;
   int curr_pose_;

@@ -6,6 +6,7 @@
 
 #include "Diffuse.h"
 #include "Renderer/RayType.h"
+#include <iostream>
 
 bool Diffuse::m_optixMaterialIsCreated = false;
 optix::Material Diffuse::m_optixMaterial;
@@ -21,8 +22,10 @@ optix::Material Diffuse::getOptixMaterial(optix::Context & context)
     if(!m_optixMaterialIsCreated)
     {
         m_optixMaterial = context->createMaterial();
-        optix::Program radianceProgram = context->createProgramFromPTXFile(ptxpath() + "Diffuse.cu.ptx", "closestHitRadiance");
-        optix::Program photonProgram = context->createProgramFromPTXFile(ptxpath() + "Diffuse.cu.ptx", "closestHitPhoton");
+        std::string ptx = ptxpath() + "Diffuse.cu.ptx";
+        std::cout << "Loading ptx: " << ptx << std::endl;
+        optix::Program radianceProgram = context->createProgramFromPTXFile(ptx, "closestHitRadiance");
+        optix::Program photonProgram = context->createProgramFromPTXFile(ptx, "closestHitPhoton");
         m_optixMaterial->setClosestHitProgram(RayType::RADIANCE, radianceProgram);
         m_optixMaterial->setClosestHitProgram(RayType::RADIANCE_IN_PARTICIPATING_MEDIUM, radianceProgram);
         m_optixMaterial->setClosestHitProgram(RayType::PHOTON, photonProgram);

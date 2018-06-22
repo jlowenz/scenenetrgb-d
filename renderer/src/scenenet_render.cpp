@@ -24,6 +24,10 @@
 #include <memory>
 #include <string>
 
+#include <boost/filesystem.hpp>
+
+namespace bf = boost::filesystem;
+
 class BaseScene {
 public:
   BaseScene() : m_render_type(RenderType::IMAGE) {}
@@ -79,14 +83,14 @@ void BaseScene::initScene(std::string save_base,std::string layout_file,std::str
   average_intensity /= WIDTH * HEIGHT;
   m_renderer->getOutputBuffer(RenderType::IMAGE)->unmap();
   std::cout<<"Average intensity:"<<average_intensity<<std::endl;
-  if (average_intensity < 60 || average_intensity > 180) {
+  if (average_intensity < 60 || average_intensity > 220) {
     std::cout<<"Average intensity too extreme:"<<average_intensity<<std::endl;
     exit(1);
   }
   // Use this for normal quality renders
   // Samples are squared so 4 means 16 total
-  m_renderer->setNumIterations(4);
-  m_renderer->setNumPhotonMaps(4);
+  m_renderer->setNumIterations(2);//4
+  m_renderer->setNumPhotonMaps(1);//4
   m_renderer->calculatePhotonMap();
 }
 
@@ -117,7 +121,7 @@ bool BaseScene::trace(std::string save_name_base, int frame_num) {
     return false;
   }
 
-  if (frame_num % 25 != 0) {
+  if (frame_num % 12 != 0) {
     return true;
   }
 
@@ -158,13 +162,28 @@ int main(int argc, char* argv[]) {
     std::cout<<"Layouts directory:"<<layouts_dir<<std::endl;
     std::string scene_description_file = std::string(argv[3]);
     std::cout<<"Input Scene Description:"<<scene_description_file<<std::endl;
-    std::string output_dir = "./";
+    bf::path sdf(scene_description_file);
+    bf::path output_dir = sdf.parent_path() / "data/";
+    if (argc >= 5) {
+      output_dir = std::string(argv[4]);
+    }
+
+    if (!bf::exists(output_dir)) {
+      std::string od = output_dir.string();
+      if (output_dir.filename() == ".") {
+        od = output_dir.parent_path().string();
+      }
+      if (!bf::create_directories(od)) {
+        std::cerr << "Problem creating dir: " << output_dir.string() << std::endl;
+        exit(2);
+      }
+    }   
   
     BaseScene scene;
-    scene.initScene(output_dir,scene_description_file,shapenets_dir,layouts_dir,0);
+    scene.initScene(output_dir.string(),scene_description_file,shapenets_dir,layouts_dir,0);
     const int number_trajectory_steps = 10000;
     for (int i = 0; i < number_trajectory_steps; ++i) {
-        if (!scene.trace(output_dir,i)) {
+      if (!scene.trace(output_dir.string(),i)) {
           std::cout<<"Finished render"<<std::endl;
           break;
         }
