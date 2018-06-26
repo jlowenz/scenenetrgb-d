@@ -53,6 +53,21 @@ using namespace std;
 
 namespace bfs = boost::filesystem;
 
+enum render_flags_t {
+  NONE = 0,
+  SHOW_LAYOUT = 1,
+  COUNT_OBJECTS = 2,
+  MAX_REASONABLE = 4,
+  COLLISION_CHECK = 8
+};
+inline render_flags_t operator|(render_flags_t a, render_flags_t b) {
+  return static_cast<render_flags_t>(static_cast<int>(a) | static_cast<int>(b));
+}
+inline render_flags_t operator&(render_flags_t a, render_flags_t b) {
+  return static_cast<render_flags_t>(static_cast<int>(a) & static_cast<int>(b));
+}
+
+
 #define RADPERDEG 0.0174533
 
 #define APIENTRY
@@ -333,7 +348,7 @@ public:
     s_cam.SetModelViewMatrix(openglSE3Matrix);
     s_cam.Apply();
     camera_.ActivateScissorAndClear(s_cam);
-    float min_depth = render_with_current_camera(true,640,480);
+    float min_depth = render_with_current_camera(true,640,480,COLLISION_CHECK);
 
     if (min_depth < 0.3 || min_depth > 999.0) {
       return true;
@@ -341,11 +356,19 @@ public:
     return false;
   }
 
+  
   float render_with_current_camera(bool show3DRoom, int width, int height,
-                                   int objects2plot=1000,
-                                   bool show_layout=true,
-                                   bool count_objects=false,
-                                   bool max_reasonable=false) {
+                                   render_flags_t flags=NONE,
+                                   int objects2plot=1000)
+  {
+    bool max_reasonable, show_layout, collision_check;
+    std::cout << "checking flags: " << flags << std::endl;
+    show_layout = (bool)((flags & SHOW_LAYOUT) == SHOW_LAYOUT);
+    max_reasonable = (bool)((flags & MAX_REASONABLE) == MAX_REASONABLE);
+    collision_check = (bool)((flags & COLLISION_CHECK) == COLLISION_CHECK);
+    std::cout << "show layout " << show_layout << " max reas " << max_reasonable
+              << " collision " << collision_check << std::endl;
+    
     glEnable(GL_DEPTH_TEST);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glColor3f(1.0f,1.0f,1.0f);
@@ -452,62 +475,6 @@ public:
                       num_vertices_copy.data(), GL_STATIC_DRAW_ARB);
       
     }
-//       glGenVertexArrays(1, &vao);
-//       glBindVertexArray(vao);
-//       // generate a new VBO and get the associated ID
-//       glGenBuffers(1, &vboId);
-//       // bind VBO in order to use
-//       glBindBuffer(GL_ARRAY_BUFFER, vboId);
-//       // upload data to VBO
-//       vertex_size = num_vertices_copy.size() / 3;
-//       glBufferData(GL_ARRAY_BUFFER, sizeof(float) * num_vertices_copy.size(),
-//                       num_vertices_copy.data(), GL_STATIC_DRAW);
-//       glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0);
-//       glEnableVertexAttribArray(0);
-      
-//       glGenBuffers(1, &colorId);
-//       glBindBuffer(GL_ARRAY_BUFFER, colorId);
-//       glBufferData(GL_ARRAY_BUFFER, sizeof(uint8_t) * colors.size(),
-//                       &colors[0], GL_STATIC_DRAW);
-//       glVertexAttribIPointer(1, 3, GL_UNSIGNED_BYTE, 0, 0);
-//       glEnableVertexAttribArray(1);
-
-//       glGenBuffers(1, &indexId);
-//       glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, indexId);
-//       glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * inds.size(),
-//                    &inds[0], GL_STATIC_DRAW);
-
-//       ogl::VertexShader vs = new ogl::_VertexShader;
-//       vs->from_string(R"VS(
-// #version 450 core
-// uniform mat4 mat_proj;
-// uniform mat4 mat_mv;
-// layout(location = 0) in vec3 vertex;
-// layout(location = 1) in vec3 color;
-// out vec3 frag_color;
-// void main() {
-//   vec4 pt;
-//   pt.xyz = vertex;
-//   pt.w = 1.0;
-//   gl_Position = mat_proj * mat_mv * pt;
-//   frag_color = color;
-// }
-// )VS");
-//       ogl::FragmentShader fs = new ogl::_FragmentShader;
-//       fs->from_string(R"FS(
-// #version 450 core
-// in vec3 frag_color;
-// out vec4 color;
-// void main() {
-//   color.xyz = frag_color;
-//   color.w = 1.0;
-// }
-// )FS");
-      
-//     }
-
-//     glBindVertexArray(vao);
-//     glDrawElements(GL_TRIANGLES, vertex_size, GL_UNSIGNED_INT, 0);
     
     glEnableClientState(GL_VERTEX_ARRAY);
     glBindBufferARB(GL_ARRAY_BUFFER_ARB, vboId);
@@ -534,62 +501,37 @@ public:
         num_colors_seen.insert(color);
       }
     }
-    // if (count_objects) {
-    //   /// Check for observed objects
-    //   glReadPixels(150, 0, width, height, GL_RGB, GL_FLOAT, rgb_array);
-    //   std::vector<int> observed_histogram(transformations_of_objects.size(), 0);
-    //   size_t N = transformations_of_objects.size();
-    //   for (int i = 0; i < height; ++i) {
-    //     for (int j = 0; j < width; ++j) { // look at 1/4 of the pixels
-    //       uint32_t r = static_cast<uint32_t>(rgb_array[i * width * 3 + j + 0] * 255);
-    //       uint32_t g = static_cast<uint32_t>(rgb_array[i * width * 3 + j + 1] * 255);
-    //       uint32_t b = static_cast<uint32_t>(rgb_array[i * width * 3 + j + 2] * 255);
-    //       //std::cout << "rgb : " << r << " " << g << " " << b << std::endl;
-    //       uint32_t color = r << 16 | g << 8 | b;
-    //       int id = color_to_id[color];
-    //       if (id > 0 && id < N) {
-    //         //std::cout << "id: " << id << std::endl;
-    //         observed_histogram[id]++;
-    //       }
-    //     }
-    //   }
-    //   std::vector<int> observed;
-    //   for (int i = 1; i < observed_histogram.size(); ++i) {
-    //     // arbitrary threshold to consider an object observed
-    //     std::cout << "hist[" << i << "]: " << observed_histogram[i] << std::endl;
-    //     if (observed_histogram[i] > 0) {
-    //       observed.push_back(i);
-    //     }
-    //   }
-    //   std::cout << "Found " << observed.size() << " observed objects" << std::endl;
-    //   observed_objects.push_back(observed);
-    // }
     
     /// Render depth
-    glReadPixels(150, 0, width, height, GL_DEPTH_COMPONENT, GL_FLOAT, depth_arrayf);
-    int scale = 5000;
-    if(!max_reasonable) {
-      float min_depth = 1E5;
-      for(int i = 0; i < width*height; i++) {
-        float z_b = depth_arrayf[i];
-        float z_n = 2.0f * z_b - 1.0f;
-        depth_arrayf[i] = 2.0 * near_plane_ * far_plane_ / (far_plane_ + near_plane_ - z_n * (far_plane_ - near_plane_));
-        if (min_depth > depth_arrayf[i])
-          min_depth = depth_arrayf[i];
-      }
-      return min_depth;
-    } else {
-      float max_depth = 0.01;
-      for(int i = 0; i < width*height; i++) {
-        float z_b = depth_arrayf[i];
-        float z_n = 2.0f * z_b - 1.0f;
-        depth_arrayf[i] = 2.0 * near_plane_ * far_plane_ / (far_plane_ + near_plane_ - z_n * (far_plane_ - near_plane_));
-        if (depth_arrayf[i] < 30.0 && max_depth < depth_arrayf[i]) {
-          max_depth = depth_arrayf[i];
+    if (collision_check || max_reasonable) {
+      glReadPixels(150, 0, width, height, GL_DEPTH_COMPONENT, GL_FLOAT, depth_arrayf);
+      int scale = 5000;
+      if (collision_check) {
+        float min_depth = 1E5;
+        for(int i = 0; i < width*height; i++) {
+          float z_b = depth_arrayf[i];
+          float z_n = 2.0f * z_b - 1.0f;
+          depth_arrayf[i] = 2.0 * near_plane_ * far_plane_ / (far_plane_ + near_plane_ - z_n * (far_plane_ - near_plane_));
+          if (min_depth > depth_arrayf[i])
+            min_depth = depth_arrayf[i];
         }
+        return min_depth;
       }
-      return max_depth;
+      if (max_reasonable) {
+        float max_depth = 0.01;
+        for(int i = 0; i < width*height; i++) {
+          float z_b = depth_arrayf[i];
+          float z_n = 2.0f * z_b - 1.0f;
+          depth_arrayf[i] = 2.0 * near_plane_ * far_plane_ / (far_plane_ + near_plane_ - z_n * (far_plane_ - near_plane_));
+          if (depth_arrayf[i] < 30.0 && max_depth < depth_arrayf[i]) {
+            max_depth = depth_arrayf[i];
+          }
+        }
+        std::cout << "Max depth check: " << max_depth << std::endl;
+        return max_depth;
+      }
     }
+    return 0;
   }
 
   void count_objects()
@@ -856,6 +798,25 @@ void parse_string_csv(const std::string& csv, std::vector<std::string>& v)
   }
 }
 
+struct context_t
+{
+  //GLFWwindow* win_;
+  int width;
+  int height;
+};
+
+context_t*
+create_context(int width, int height)
+{
+  return nullptr;
+}
+
+context_t* 
+create_offscreen_window(const std::string& name, int width, int height)
+{
+  return nullptr;
+}
+
 int
 main(int argc, char* argv[])
 {
@@ -1036,8 +997,8 @@ main(int argc, char* argv[])
   bool is_s_cam_changed = false;
   int count = 0;
 
-  CVD::Image<CVD::Rgb<CVD::byte> > img_flipped(CVD::ImageRef(640,480));
-  CVD::Image<u_int16_t>depth_image(CVD::ImageRef(width,height));
+  //CVD::Image<CVD::Rgb<CVD::byte> > img_flipped(CVD::ImageRef(640,480));
+  //CVD::Image<u_int16_t>depth_image(CVD::ImageRef(width,height));
 
   bool loaded_shapes = false;
   GLuint vboId;
@@ -1218,6 +1179,8 @@ main(int argc, char* argv[])
       s_cam.SetModelViewMatrix(openglSE3Matrix);
       s_cam.Apply();
       is_s_cam_changed = true;
+
+      render_camera_view = false;
     } else if (is_s_cam_changed) {
       s_cam = saved_s_cam;
       std::cout<<std::endl<<"Reverting camera"<<std::endl;
@@ -1226,10 +1189,12 @@ main(int argc, char* argv[])
     d_cam.ActivateScissorAndClear(s_cam);
     //double check that we have a sensible viewpoint on the first frame
     if (frame_count == 1) {
-      float max_depth = myscene.render_with_current_camera(show3DRoom,width,
-                                                           height,
-                                                           objects2plot,
-                                                           show_layout,true,true);
+      std::cout << MAX_REASONABLE << ", " << (MAX_REASONABLE | SHOW_LAYOUT) << ", "
+                << ((MAX_REASONABLE | SHOW_LAYOUT) & MAX_REASONABLE) << std::endl;
+      float max_depth = myscene.
+        render_with_current_camera(show3DRoom,width,height,
+                                   (MAX_REASONABLE | ((show_layout)?SHOW_LAYOUT:NONE)),
+                                   objects2plot);
       if (max_depth < 0.5) {
         std::cout<<std::endl<<"Bad initial frame"<<std::endl;
         exit(1);
@@ -1237,8 +1202,8 @@ main(int argc, char* argv[])
     }
     float min_depth = myscene.render_with_current_camera(show3DRoom,width,
                                                          height,
-                                                         objects2plot,
-                                                         show_layout,true);
+                                                         (show_layout)?SHOW_LAYOUT:NONE,
+                                                         objects2plot);
     count++;
     myscene.count_objects();
     d_panel.Render();

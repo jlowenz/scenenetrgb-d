@@ -89,8 +89,8 @@ void BaseScene::initScene(std::string save_base,std::string layout_file,std::str
   }
   // Use this for normal quality renders
   // Samples are squared so 4 means 16 total
-  m_renderer->setNumIterations(2);//4
-  m_renderer->setNumPhotonMaps(1);//4
+  m_renderer->setNumIterations(4);//4
+  m_renderer->setNumPhotonMaps(4);//4
   m_renderer->calculatePhotonMap();
 }
 
@@ -121,6 +121,7 @@ bool BaseScene::trace(std::string save_name_base, int frame_num) {
     return false;
   }
 
+  // TODO: this should be configurable
   if (frame_num % 12 != 0) {
     return true;
   }
