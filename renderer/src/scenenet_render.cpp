@@ -115,13 +115,15 @@ bool BaseScene::trace(std::string save_name_base, int frame_num) {
     reset=true;
   }
 
+  int pose_number = frame_num * 2;
+  
   // The two poses are for motion blur
-  const std::pair<TooN::Vector<3>,TooN::Vector<3> > start_pose = m_iscene->getPose(reset,false);
+  const std::pair<TooN::Vector<3>,TooN::Vector<3> > start_pose = m_iscene->getPose(pose_number);
   if (start_pose.first[0] == 0.0 && start_pose.first[1] == 0.0 && start_pose.first[2] == 0.0 &&
       start_pose.second[0] == 0.0 && start_pose.second[1] == 0.0 && start_pose.second[2] == 0.0) {
     return false;
   }
-  const std::pair<TooN::Vector<3>,TooN::Vector<3> > end_pose = m_iscene->getPose(false,reset);
+  const std::pair<TooN::Vector<3>,TooN::Vector<3> > end_pose = m_iscene->getPose(pose_number+1);
   if (end_pose.first[0] == 0.0 && end_pose.first[1] == 0.0 && end_pose.first[2] == 0.0 &&
       end_pose.second[0] == 0.0 && end_pose.second[1] == 0.0 && end_pose.second[2] == 0.0) {
     return false;

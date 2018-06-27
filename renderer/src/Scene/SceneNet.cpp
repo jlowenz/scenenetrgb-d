@@ -956,7 +956,22 @@ SceneNetCamera SceneNet::getCamera() const
   return default_Camera;
 }
 
-std::pair<TooN::Vector<3>,TooN::Vector<3>> SceneNet::getPose(bool restart, bool second) {
+std::pair<TooN::Vector<3>,TooN::Vector<3>>
+SceneNet::getPose(int pose_number) {
+  if (pose_number < saved_poses_.size()) {
+    pose_ = saved_poses_[pose_number];
+    time_ = saved_timestamps_[pose_number];
+    log_file<<std::setprecision(6)<<"time:"<<time_<<" pose:"<<pose_.first[0]<<","<<pose_.first[1]<<","<<pose_.first[2]<<" lookat:"<<pose_.second[0]<<","<<pose_.second[1]<<","<<pose_.second[2]<<std::endl;
+    return pose_;
+  }
+  TooN::Vector<3> eye = TooN::makeVector(0.0,0.0,0.0);
+  TooN::Vector<3> lookat = TooN::makeVector(0.0,0.0,0.0);
+  std::pair<TooN::Vector<3>,TooN::Vector<3>> pose = std::make_pair(eye,lookat);
+  return pose;
+}
+
+std::pair<TooN::Vector<3>,TooN::Vector<3>>
+SceneNet::getPose(bool restart, bool second) {
   if (restart) {
     pose_number_ = 0; 
   }

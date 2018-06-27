@@ -65,6 +65,7 @@ public:
     virtual const std::vector<Light> & getSceneLights() const;
     virtual SceneNetCamera getCamera() const;
     virtual std::pair<TooN::Vector<3>,TooN::Vector<3>> getPose(bool restart=false,bool second=false);
+    virtual std::pair<TooN::Vector<3>,TooN::Vector<3>> getPose(int pose_number);
     virtual const char* getSceneName() const;
     static const char* getSceneNetSceneName();
     virtual unsigned int getNumTriangles() const;
