@@ -132,10 +132,14 @@ bool BaseScene::trace(std::string save_name_base, int frame_num) {
     return true;
   }
 
+  char fnum[10];
+  sprintf(fnum, "%05d", frame_num);
+  std::string fnum_str(fnum);
+  
   std::cout<<"About to render RGB"<<std::endl;
   m_render_type = RenderType::IMAGE;
   m_renderer->render(default_camera,start_pose,end_pose,m_render_type);
-  std::string save_name = save_name_base+std::to_string(frame_num)+"_rgb.jpg";
+  std::string save_name = save_name_base+fnum_str+"_rgb.jpg";
   std::cout<<"Saving here:"<<save_name<<std::endl;
 
   //std::cout<<"Saving file:"<<save_name<<std::endl;
@@ -144,12 +148,12 @@ bool BaseScene::trace(std::string save_name_base, int frame_num) {
   // Only need to call render once for all ground truth
   m_render_type = RenderType::INSTANCE;
   m_renderer->render(default_camera,start_pose,end_pose,m_render_type);
-  save_name = save_name_base+std::to_string(frame_num)+"_instance.png";
+  save_name = save_name_base+fnum_str+"_instance.png";
   std::cout<<"Instance saving here:"<<save_name<<std::endl;
   sutil::displayBufferPPM(save_name.c_str(),getRawOutputBuffer()->get());
 
   m_render_type = RenderType::DEPTH;
-  save_name = save_name_base+std::to_string(frame_num)+"_depth.png";
+  save_name = save_name_base+fnum_str+"_depth.png";
   std::cout<<"Depth saving here:"<<save_name<<std::endl;
   sutil::displayBufferPPM(save_name.c_str(),getRawOutputBuffer()->get());
 
@@ -198,13 +202,16 @@ void term(int sig)
 }
 
 int main(int argc, char* argv[]) {
-  
+  // install the signal handlers
   struct sigaction action;
   memset(&action, 0, sizeof(struct sigaction));
   action.sa_handler = term;
   sigaction(SIGTERM, &action, NULL);
   sigaction(SIGINT, &action, NULL);
+  sigaction(SIGALRM, &action, NULL);
 
+  // set an alarm for one hour (in seconds)
+  alarm(3600);
   
   if (argc < 3) {
     std::cout<<"Too few arguments"<<std::endl;

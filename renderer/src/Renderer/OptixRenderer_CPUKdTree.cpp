@@ -161,6 +161,7 @@ public:
       return nullptr;
     }
 
+    
     // Choose axis to split on
     int axis;
 
@@ -202,18 +203,26 @@ public:
 
     kd_tree_[current_root_] = (photons_[median]);
 
-    KdTreeTask& left = *new (allocate_child()) KdTreeTask(photons_,start_,median,
-                                                               depth_+1, kd_tree_,
-                                                               2*current_root_+1,
-                                                               bbmin_, leftMax);
-    KdTreeTask& right = *new (allocate_child()) KdTreeTask(photons_,median+1,end_,
-                                                                depth_+1, kd_tree_,
-                                                                2*current_root_+2,
-                                                                rightMin, bbmax_);
-    set_ref_count(3);
-    spawn(right);
-    spawn_and_wait_for_all(left);
-    return nullptr;
+    if (end_ - start_ <= 1000) {
+      buildKDTree( photons_, start_, median, depth_+1,
+                   kd_tree_, 2*current_root_+1, bbmin_,  leftMax );
+      buildKDTree( photons_, median+1, end_, depth_+1,
+                   kd_tree_, 2*current_root_+2, rightMin, bbmax_ );
+      return nullptr;
+    } else {    
+      KdTreeTask& left = *new (allocate_child()) KdTreeTask(photons_,start_,median,
+                                                            depth_+1, kd_tree_,
+                                                            2*current_root_+1,
+                                                            bbmin_, leftMax);
+      KdTreeTask& right = *new (allocate_child()) KdTreeTask(photons_,median+1,end_,
+                                                             depth_+1, kd_tree_,
+                                                             2*current_root_+2,
+                                                             rightMin, bbmax_);
+      set_ref_count(3);
+      spawn(right);
+      spawn_and_wait_for_all(left);
+      return nullptr;
+    }
   }
 };
 
