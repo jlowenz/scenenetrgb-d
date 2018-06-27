@@ -30,6 +30,7 @@
 #include "Renderer/PhotonMapping/Photon.h"
 #include "Util/sutil/sutil.h"
 #include "rendererConfig.h"
+#include "scenenet_config.h"
 
 const unsigned int OptixRenderer::PHOTON_GRID_MAX_SIZE = 0;
 const unsigned int OptixRenderer::MAX_PHOTON_COUNT = MAX_PHOTONS_DEPOSITS_PER_EMITTED;
@@ -330,8 +331,10 @@ void OptixRenderer::setNumIterations(int itr) {
 
 void OptixRenderer::calculatePhotonMap() {
   for (int photon_map = 0; photon_map < m_num_photon_maps; ++photon_map) {
+    if (g_interrupted) exit(0);
     printf("Calculating photon map[%i]\n",photon_map);
     for (int iterationNumber = 0; iterationNumber < NUM_PHOTON_ITERATIONS; ++iterationNumber) {
+      if (g_interrupted) exit(0);
       std::cout<<"Photon Iter Num:"<<iterationNumber<<std::endl;
       m_context["photonIterationNumber"]->setUint(iterationNumber);
       m_context->launch( OptixEntryPoint::PPM_PHOTON_PASS,

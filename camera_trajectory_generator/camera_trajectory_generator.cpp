@@ -595,18 +595,24 @@ public:
   
   TooN::Vector<3>  random_object_pose(std::string focus_class)
   {
+    const int MAX_COUNT=100;
     int obj_id = rand_objs_[curr_obj_id_];
     std::cout << "trying " << obj_id << std::endl;
     std::string obj = object_names_[obj_id];
     TooN::Vector<3> centroid = object_centroid(obj_id);
-    while (obj != focus_class
-           || centroid[1] > 3.f
-           || centroid[1] < -0.1f) {
+    int count = 0;
+    while ((obj != focus_class
+            || centroid[1] > 3.f
+            || centroid[1] < -0.1f) && count++ < MAX_COUNT) {
       curr_obj_id_ = (curr_obj_id_ + 1) % (object_names_.size()-1);
       obj_id = rand_objs_[curr_obj_id_];
       std::cout << "trying " << obj_id << std::endl;
       obj = object_names_[obj_id];
       centroid = object_centroid(obj_id);
+    }
+    if (count >= MAX_COUNT) {
+      std::cerr << "Could not get random object pose for: " << object_names_[obj_id] << std::endl;
+      exit(1);
     }
     curr_obj_id_ = (curr_obj_id_ + 1) % (object_names_.size()-1);
     std::cout << "Found obj " << obj_id << " at " << centroid << std::endl;
@@ -1115,6 +1121,11 @@ main(int argc, char* argv[])
         min_max_bb[4]<<" "<<
         min_max_bb[5]<<" "<<std::endl;
       std::cout<<std::endl<<"Pose out of bounds"<<std::endl;
+      if (frame_count >= total_num_frames/2) {
+        // only die if we haven't met half the requested number of frames
+        frame_count = total_num_frames;
+        continue;
+      }
       exit(1);
     }
     // if (pose.target[0] < min_max_bb[0] || pose.target[0] > min_max_bb[1]

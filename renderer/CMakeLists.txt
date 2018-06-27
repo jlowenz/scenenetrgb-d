@@ -24,6 +24,8 @@ FIND_PACKAGE(GLUT REQUIRED)
 FIND_PACKAGE(OpenGL REQUIRED)
 FIND_PACKAGE(ASSIMP REQUIRED)
 find_package(Boost REQUIRED COMPONENTS filesystem)
+set(TBB_ROOT_DIR "/usr")
+find_package(TBB REQUIRED)
 
 INCLUDE_DIRECTORIES(
   ${CMAKE_CURRENT_SOURCE_DIR}
@@ -39,6 +41,7 @@ INCLUDE_DIRECTORIES(
   ${ASSIMP_INCLUDE}
   ${CVD_INCLUDE_DIR}
   ${Boost_INCLUDE_DIRS}
+  ${TBB_INCLUDE_DIR}
 )
 
 
@@ -59,7 +62,8 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/src/Util/sutil/sampleConfig.h.in ${CM
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/src/Util/sutil
   ${OptiX_INCLUDE}/optixu
   ${CMAKE_CURRENT_BINARY_DIR}
-  ${CUDA_INCLUDE_DIRS} 
+  ${CUDA_INCLUDE_DIRS}
+  src/cereal/include
   )
 
 # Our sutil library.  The rules to build it are found in the subdirectory.
@@ -116,6 +120,6 @@ add_executable(scenenet_render src/scenenet_render.cpp
   ${camera_srcs}
   ${math_srcs}
   ${trajectory_srcs})
-target_link_libraries(scenenet_render ${Boost_LIBRARIES})
+target_link_libraries(scenenet_render ${Boost_LIBRARIES} ${TBB_LIBRARIES})
 add_dependencies(scenenet_render shaders)
 

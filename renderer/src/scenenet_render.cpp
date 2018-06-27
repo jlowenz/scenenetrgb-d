@@ -23,8 +23,12 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <unistd.h>
+#include <signal.h>
 
 #include <boost/filesystem.hpp>
+
+#include "cereal/archives/json.hpp"
 
 namespace bf = boost::filesystem;
 
@@ -69,6 +73,8 @@ void BaseScene::initScene(std::string save_base,std::string layout_file,std::str
       end_pose.second[0] == 0.0 && end_pose.second[1] == 0.0 && end_pose.second[2] == 0.0) {
     exit(1);
   }
+
+  // CHECK for average intensity of the scene... 
   m_renderer->render(default_camera,start_pose,end_pose,RenderType::IMAGE);
   double average_intensity = 0.0;
   optix::uchar4* buffer_Host = (optix::uchar4*) m_renderer->getOutputBuffer(RenderType::IMAGE)->map();
@@ -150,44 +156,112 @@ bool BaseScene::trace(std::string save_name_base, int frame_num) {
   return true;
 }
 
-int main(int argc, char* argv[]) {
-    if (argc < 3) {
-        std::cout<<"Too few arguments"<<std::endl;
-        std::cout<<"./render /path/to/ShapeNet/ /path/to/SceneNetLayouts/ /path/to/scene_and_trajectory_description.txt"<<std::endl;
-        std::cout<<"Note that the folders should be followed by trailing / in the command"<<std::endl;
-        exit(1);
-    }
-    std::string shapenets_dir = std::string(argv[1]);
-    std::cout<<"ShapeNet directory:"<<shapenets_dir<<std::endl;
-    std::string layouts_dir = std::string(argv[2]);
-    std::cout<<"Layouts directory:"<<layouts_dir<<std::endl;
-    std::string scene_description_file = std::string(argv[3]);
-    std::cout<<"Input Scene Description:"<<scene_description_file<<std::endl;
-    bf::path sdf(scene_description_file);
-    bf::path output_dir = sdf.parent_path() / "data/";
-    if (argc >= 5) {
-      output_dir = std::string(argv[4]);
-    }
+struct status_t
+{
+  bool done;
+  int step;
+  // materials, et al?
 
-    if (!bf::exists(output_dir)) {
-      std::string od = output_dir.string();
-      if (output_dir.filename() == ".") {
-        od = output_dir.parent_path().string();
-      }
-      if (!bf::create_directories(od)) {
-        std::cerr << "Problem creating dir: " << output_dir.string() << std::endl;
-        exit(2);
-      }
-    }   
+  status_t()
+    : done(false), step(0)
+  {    
+  }
   
-    BaseScene scene;
-    scene.initScene(output_dir.string(),scene_description_file,shapenets_dir,layouts_dir,0);
-    const int number_trajectory_steps = 10000;
-    for (int i = 0; i < number_trajectory_steps; ++i) {
-      if (!scene.trace(output_dir.string(),i)) {
-          std::cout<<"Finished render"<<std::endl;
-          break;
-        }
+  template <class Archive>
+  void serialize(Archive& ar) {
+    ar(done, step);
+  }
+};
+
+status_t load_status(bf::path& file)
+{
+  std::ifstream in(file.string());
+  cereal::JSONInputArchive archive(in);
+  status_t s;
+  archive(s);
+  return s;
+}
+
+void save_status(bf::path& file, status_t& status)
+{
+  std::ofstream out(file.string());
+  cereal::JSONOutputArchive archive(out);
+  archive(status);
+}
+
+volatile sig_atomic_t g_interrupted = 0;
+
+void term(int sig)
+{
+  std::cout << "TERM HANDLER CALLED" <<std::endl;
+  g_interrupted = 1;
+}
+
+int main(int argc, char* argv[]) {
+  
+  struct sigaction action;
+  memset(&action, 0, sizeof(struct sigaction));
+  action.sa_handler = term;
+  sigaction(SIGTERM, &action, NULL);
+  sigaction(SIGINT, &action, NULL);
+
+  
+  if (argc < 3) {
+    std::cout<<"Too few arguments"<<std::endl;
+    std::cout<<"./render /path/to/ShapeNet/ /path/to/SceneNetLayouts/ /path/to/scene_and_trajectory_description.txt"<<std::endl;
+    std::cout<<"Note that the folders should be followed by trailing / in the command"<<std::endl;
+    exit(1);
+  }
+  std::string shapenets_dir = std::string(argv[1]);
+  std::cout<<"ShapeNet directory:"<<shapenets_dir<<std::endl;
+  std::string layouts_dir = std::string(argv[2]);
+  std::cout<<"Layouts directory:"<<layouts_dir<<std::endl;
+  std::string scene_description_file = std::string(argv[3]);
+  std::cout<<"Input Scene Description:"<<scene_description_file<<std::endl;
+  bf::path sdf(scene_description_file);
+  bf::path output_dir = sdf.parent_path() / "data/";
+  bf::path status_file = output_dir / "status.txt";
+  status_t status;
+    
+  if (argc >= 5) {
+    output_dir = std::string(argv[4]);
+  }
+
+  if (!bf::exists(output_dir)) {
+    std::string od = output_dir.string();
+    if (output_dir.filename() == ".") {
+      od = output_dir.parent_path().string();
     }
-    return 0;
+    if (!bf::create_directories(od)) {
+      std::cerr << "Problem creating dir: " << output_dir.string() << std::endl;
+      exit(2);
+    }
+  } else {
+    // if the output directory exists, check for a status object
+    if (bf::exists(status_file)) {
+      // load the status
+      status = load_status(status_file);
+      if (status.done) {
+        // do nothing...
+        return 0;
+      }
+    }
+  }    
+    
+  BaseScene scene;
+  scene.initScene(output_dir.string(),scene_description_file,shapenets_dir,layouts_dir,0);
+  const int number_trajectory_steps = 10000;
+  for (int i = status.step; i < number_trajectory_steps; ++i) {
+    save_status(status_file, status);
+    if (g_interrupted == 1) return 0; // exit CLEANLY, but not done yet
+    if (!scene.trace(output_dir.string(),i)) {
+      std::cout<<"Finished render"<<std::endl;
+      break;
+    }
+    status.step++;
+  }
+  status.done = true;
+  save_status(status_file, status);
+    
+  return 0;
 }

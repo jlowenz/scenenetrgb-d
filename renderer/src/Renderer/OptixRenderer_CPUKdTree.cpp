@@ -4,10 +4,13 @@
  * file that was distributed with this source code.
 */
 
+#include "scenenet_config.h"
+#include <tbb/tbb.h>
 #include "OptixRenderer.h"
 #include "Renderer/PhotonMapping/Photon.h"
 #include "rendererConfig.h"
 #include <limits>
+
 
 // This can be sped up with pivot sorting only... to decrease caching time
 void sort_p(std::vector<Photon> &p, int left, int right, int k, int axis) {
@@ -87,8 +90,11 @@ static void buildKDTree(std::vector<Photon> &photons, int start, int end, int de
     }
 
     kd_tree[current_root] = (photons[median]);
-    buildKDTree( photons, start, median, depth+1, kd_tree, 2*current_root+1, bbmin,  leftMax );
-    buildKDTree( photons, median+1, end, depth+1, kd_tree, 2*current_root+2, rightMin, bbmax );
+    
+    buildKDTree( photons, start, median, depth+1,
+                 kd_tree, 2*current_root+1, bbmin,  leftMax );
+    buildKDTree( photons, median+1, end, depth+1,
+                 kd_tree, 2*current_root+2, rightMin, bbmax );
 }
 
 
@@ -122,6 +128,95 @@ void OptixRenderer::saveHostPhotonMap(int map_id, Photon* kd_data, int size) {
   }
 }
 
+class KdTreeTask : public tbb::task {
+public:
+  std::vector<Photon>& photons_;
+  Photon* kd_tree_;
+  int start_, end_, depth_, current_root_;
+  optix::float3 bbmin_, bbmax_;
+  
+  KdTreeTask(std::vector<Photon>& photons, int start, int end, int depth,
+             Photon* kd_tree, int current_root, optix::float3 bbmin, optix::float3 bbmax)
+    : photons_(photons), kd_tree_(kd_tree),
+      start_(start), end_(end), depth_(depth),
+      current_root_(current_root), bbmin_(bbmin), bbmax_(bbmax)
+  {
+  }
+
+  tbb::task* execute()
+  {
+    if (g_interrupted) exit(0);
+    
+    // If we have zero photons, this is a NULL node
+    if( end_ - start_ == 0 ) {
+      kd_tree_[current_root_].axis = PPM_NULL;
+      kd_tree_[current_root_].power = optix::make_float3( 0.0f );
+      return nullptr;
+    }
+
+    // If we have a single photon
+    if( end_ - start_ == 1 ) {
+      photons_[start_].axis = PPM_LEAF;
+      kd_tree_[current_root_] = (photons_[start_]);
+      return nullptr;
+    }
+
+    // Choose axis to split on
+    int axis;
+
+    optix::float3 diag = bbmax_-bbmin_;
+    axis = max_component(diag);
+
+    int median = (start_+end_) / 2;
+    switch( axis ) {
+    case 0:
+      sort_p(photons_, start_, end_-1, median,0);
+      photons_[median].axis = PPM_X;
+      break;
+    case 1:
+      sort_p(photons_, start_, end_-1, median,1);
+      photons_[median].axis = PPM_Y;
+      break;
+    case 2:
+      sort_p(photons_, start_, end_-1, median,2);
+      photons_[median].axis = PPM_Z;
+      break;
+    }
+    optix::float3 rightMin = bbmin_;
+    optix::float3 leftMax  = bbmax_;
+    optix::float3 midPoint = (photons_[median]).position;
+    switch( axis ) {
+    case 0:
+      rightMin.x = midPoint.x;
+      leftMax.x  = midPoint.x;
+      break;
+    case 1:
+      rightMin.y = midPoint.y;
+      leftMax.y  = midPoint.y;
+      break;
+    case 2:
+      rightMin.z = midPoint.z;
+      leftMax.z  = midPoint.z;
+      break;
+    }
+
+    kd_tree_[current_root_] = (photons_[median]);
+
+    KdTreeTask& left = *new (allocate_child()) KdTreeTask(photons_,start_,median,
+                                                               depth_+1, kd_tree_,
+                                                               2*current_root_+1,
+                                                               bbmin_, leftMax);
+    KdTreeTask& right = *new (allocate_child()) KdTreeTask(photons_,median+1,end_,
+                                                                depth_+1, kd_tree_,
+                                                                2*current_root_+2,
+                                                                rightMin, bbmax_);
+    set_ref_count(3);
+    spawn(right);
+    spawn_and_wait_for_all(left);
+    return nullptr;
+  }
+};
+
 void OptixRenderer::createPhotonKdTreeOnCPU(int map_id)
 {
     Photon* photons_host = reinterpret_cast<Photon*>( m_photons->map() );
@@ -137,7 +232,7 @@ void OptixRenderer::createPhotonKdTreeOnCPU(int map_id)
             valid_index++;
         }
     }
-    std::cout<<"Valid photons"<<photons_vect.size()<<std::endl;
+    std::cout<<std::endl<<"Valid photons: "<<photons_vect.size()<<std::endl;
 
     optix::float3 bbmin = optix::make_float3(0.0f);
     optix::float3 bbmax = optix::make_float3(0.0f);
@@ -154,7 +249,12 @@ void OptixRenderer::createPhotonKdTreeOnCPU(int map_id)
     }
 
     // Now build KD tree
-    buildKDTree(photons_vect, 0, photons_vect.size(), 0, photonKdTree_host, 0, bbmin, bbmax);
+    //buildKDTree(photons_vect, 0, photons_vect.size(), 0, photonKdTree_host, 0, bbmin, bbmax);
+    KdTreeTask& root = *new (tbb::task::allocate_root())
+      KdTreeTask(photons_vect, 0, photons_vect.size(), 0,
+                 photonKdTree_host, 0, bbmin, bbmax);
+    tbb::task::spawn_root_and_wait(root);
+    
     saveHostPhotonMap(map_id,photonKdTree_host,NUM_PHOTONS);
     m_photon_map_used = map_id;
 

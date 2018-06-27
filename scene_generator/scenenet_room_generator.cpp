@@ -815,7 +815,7 @@ int main(int argc, char* argv[])
   
   // Pick random layout
   //std::uniform_int_distribution<> layout_dist(0,layout_paths.size()-1);
-  std::uniform_int_distribution<> layout_dist(0,12); // livingroom + bedroom
+  std::uniform_int_distribution<> layout_dist(0,21); // livingroom + bedroom + office
   int layout_int = layout_dist(mt);
   std::cout<<"Selecting from:"<<layout_int<<std::endl;
   std::cout<<"Picking random "<< layout_paths.size()-1<<std::endl;
@@ -846,7 +846,7 @@ int main(int argc, char* argv[])
   std::cout<<"max of scene"<<bbmax.x<<" "<<bbmax.y<<" "<<bbmax.z<<" "<<std::endl;
 
   std::vector<RandomObject>objects;
-  std::uniform_real_distribution<double> uniform_dist_xz(0.2, 0.8);
+  std::uniform_real_distribution<double> uniform_dist_xz(-0.3, 0.3);
   std::uniform_real_distribution<double> uniform_dist_y(0.4, 0.6);
 
   ObjScaling myobjscaling("../textfiles/objects_in_scene.txt");
@@ -869,10 +869,14 @@ int main(int argc, char* argv[])
       this_object = get_random_object(mt,myobjscaling,myshapenetmodel,focus_object);
     } else {
       this_object = get_random_object(mt,myobjscaling,myshapenetmodel,scene_type,false);      
-    }
-    double x = bbmin.x + 0.5 * (bbmax.x - bbmin.x); // right in the middle
+    }    
+    // double x = bbmin.x + 0.5 * (bbmax.x - bbmin.x); // right in the middle
+    // double y = bbmin.y + 0.5 * (bbmax.y - bbmin.y);
+    // double z = bbmin.z + 0.5 * (bbmax.z - bbmin.z);
+    // Support modified layouts such that 0,Y/2,0 is center
+    double x = 0;
+    double z = 0;
     double y = bbmin.y + 0.5 * (bbmax.y - bbmin.y);
-    double z = bbmin.z + 0.5 * (bbmax.z - bbmin.z);
     auto mass = mass_dist(mt);
     auto object_physics_body = add_object(mphysicalSystem,this_object,ChVector<>(x,y,z),mass);
     this_object.physics_body = object_physics_body;
@@ -882,9 +886,9 @@ int main(int argc, char* argv[])
       //Choose uniform random position
       RandomObject this_object = get_random_object(mt,myobjscaling,myshapenetmodel,scene_type,true);
 
-      double x = bbmin.x + uniform_dist_xz(mt) * (bbmax.x - bbmin.x);
-      double y = bbmin.y + uniform_dist_y(mt) * (bbmax.y - bbmin.y) * 0.5;
-      double z = bbmin.z + uniform_dist_xz(mt) * (bbmax.z - bbmin.z);
+      double x = uniform_dist_xz(mt) * (bbmax.x - bbmin.x);
+      double y = bbmin.y + uniform_dist_y(mt) * (bbmax.y - bbmin.y);
+      double z = uniform_dist_xz(mt) * (bbmax.z - bbmin.z);
       std::cout<<"object position:"<<x<<" "<<y<<" "<<z<<" "<<std::endl;
 
       auto mass = mass_dist(mt);
@@ -904,9 +908,9 @@ int main(int argc, char* argv[])
       for (auto& focus_object : focus_objects) {
         for (int object_id = 0; object_id < num_small_objects; object_id++) {
           RandomObject this_object = get_random_object(mt,myobjscaling,myshapenetmodel,focus_object);
-          double x = bbmin.x + uniform_dist_xz(mt) * (bbmax.x - bbmin.x);
+          double x = uniform_dist_xz(mt) * (bbmax.x - bbmin.x);
           double y = bbmin.y + uniform_dist_y(mt) * (bbmax.y - bbmin.y);
-          double z = bbmin.z + uniform_dist_xz(mt) * (bbmax.z - bbmin.z);
+          double z = uniform_dist_xz(mt) * (bbmax.z - bbmin.z);
           auto object_physics_body = add_object(mphysicalSystem,this_object,ChVector<>(x,y,z),0.1);
           this_object.physics_body = object_physics_body;
           objects.push_back(this_object);
@@ -918,9 +922,9 @@ int main(int argc, char* argv[])
       for (int object_id = 0; object_id < num_small_objects; object_id++) {
         //Choose uniform random position
         RandomObject this_object = get_random_object(mt,myobjscaling,myshapenetmodel,scene_type,false);
-        double x = bbmin.x + uniform_dist_xz(mt) * (bbmax.x - bbmin.x);
+        double x = uniform_dist_xz(mt) * (bbmax.x - bbmin.x);
         double y = bbmin.y + uniform_dist_y(mt) * (bbmax.y - bbmin.y);
-        double z = bbmin.z + uniform_dist_xz(mt) * (bbmax.z - bbmin.z);
+        double z = uniform_dist_xz(mt) * (bbmax.z - bbmin.z);
         auto object_physics_body = add_object(mphysicalSystem,this_object,ChVector<>(x,y,z),0.1);
         this_object.physics_body = object_physics_body;
         objects.push_back(this_object);
@@ -936,7 +940,7 @@ int main(int argc, char* argv[])
    */
   // This is for non-rendered physical simulation
   mphysicalSystem.SetEndTime(total_time);
-  GetLog() << "Entire in one";
+  GetLog() << "Entire in one\n" ;
   mphysicalSystem.DoEntireDynamics();
 
   /* 
@@ -1024,7 +1028,9 @@ int main(int argc, char* argv[])
     valid++;
   }
   if (valid <= (objects.size()/2)) {
-    return -1;
+    std::cerr << "Invalid number of objects used..." << std::endl;
+    return 1;
   }
+  std::cout << "Valid objects: " << valid << std::endl;
   return 0;
 }

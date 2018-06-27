@@ -1,0 +1,11 @@
+<package format="2">
+
+  <name>cereal</name>
+  <version>1.2.2</version>
+  <description>The cereal serialization library (like boost::serialization, but better)</description>
+  <maintainer email="cerealcpp@googlegroups.com">Cereal Group</maintainer>
+
+  <license>BSD</license>
+  <buildtool_depend>catkin</buildtool_depend>
+
+</package>
