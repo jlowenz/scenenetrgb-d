@@ -15,7 +15,7 @@ ENDIF()
 INCLUDE(SetPlatformVars)
 
 FIND_PACKAGE(CUDA REQUIRED)
-SET(CUDA_NVCC_FLAGS   "-arch=compute_61 -code=sm_61"  "--use_fast_math" "-O3" "-lineinfo" "-Xcompiler")
+SET(CUDA_NVCC_FLAGS   "-arch=compute_52 -code=sm_61,sm_52"  "--use_fast_math" "-O3" "-lineinfo" "-Xcompiler")
 SET(CUDA_HOST_COMPILER gcc-5)
 FIND_PACKAGE(CVD REQUIRED)
 FIND_PACKAGE(Eigen3 REQUIRED)

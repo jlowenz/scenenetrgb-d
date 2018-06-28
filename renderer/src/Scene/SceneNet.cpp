@@ -67,7 +67,7 @@ SceneNet::SceneNet(std::string save_base,std::string layout_file, std::string ob
   int line_number = 1;
   std::string str;
   while (std::getline(file, str)) {
-    std::cout << "- " << str.substr(0,100) << std::endl;
+    //std::cout << "- " << str.substr(0,100) << std::endl;
     std::istringstream buffer(str);
     std::string model_id,wnlemmas,wordtags;
     if (line_number > 1) {
