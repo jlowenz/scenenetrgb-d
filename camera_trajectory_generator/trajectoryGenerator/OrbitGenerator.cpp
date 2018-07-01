@@ -36,14 +36,14 @@ void cart2sph(const TooN::Vector<3>& cart, TooN::Vector<3>& sphere)
   // float radius = TooN::norm(cart);
   // //TooN::Vector<3> ncart = cart / radius;
   sph s(sphere);
-  std::cout << "sph:0 " << sphere[0] << " " << sphere[1] << " " << sphere[2] << std::endl;
+  //std::cout << "sph:0 " << sphere[0] << " " << sphere[1] << " " << sphere[2] << std::endl;
   bg::transform(cart, s);
   sphere = s;
   sphere[0] = (sphere[0] < 0) ? (2*M_PI+sphere[0]) : sphere[0]; // normalize 0->2pi
   // sph[1] = acos(cart[1]/radius);
   // sph[0] = atan2(cart[2],cart[0]);
   // sph[2] = radius;
-  std::cout << "sph:1 " << sphere[0] << " " << sphere[1] << " " << sphere[2] << std::endl;
+  //std::cout << "sph:1 " << sphere[0] << " " << sphere[1] << " " << sphere[2] << std::endl;
 }
 
 OrbitGenerator::OrbitGenerator(CollisionInterfacePtr collision_checker,
@@ -263,10 +263,10 @@ OrbitGenerator::update_euclidean(float timestep, Vector& tmp_pos, Vector& tmp_ve
   pos += target_pos_;
   vel = TooN::Zeros;
 
-  std::cout << "orb vel: " << tmp_vel << std::endl
-            << "orb pos: " << tmp_pos << std::endl
-            << " target: " << target_pos_ << std::endl
-            << "    pos: " << pos << std::endl;
+  // std::cout << "orb vel: " << tmp_vel << std::endl
+  //           << "orb pos: " << tmp_pos << std::endl
+  //           << " target: " << target_pos_ << std::endl
+  //           << "    pos: " << pos << std::endl;
 }
 
   
@@ -275,14 +275,14 @@ OrbitGenerator::update_camera(float timestep, Vector& position, Vector& velocity
 {  
   // if it's on the sphere, then we do the orbital thing, if it's off the sphere,
   // we move towards the new sphere
-  std::cout << "Orbiting... " << std::endl;
+  //std::cout << "Orbiting... " << std::endl;
   // we're basically on the sphere
   // update the orbit
 
   Vector tmp_pos;
   float tmp_vel = orbit_vel_;
   sph2cart(orbit_pos_, tmp_pos);
-  std::cout << "tmp_pos: " << tmp_pos << std::endl;
+  //std::cout << "tmp_pos: " << tmp_pos << std::endl;
   
   if (state_ == ChangeRadius) {
     double diff = orbit_wp_pos_[2] - orbit_pos_[2];
@@ -307,11 +307,11 @@ OrbitGenerator::update_camera(float timestep, Vector& position, Vector& velocity
     Vector norm = TooN::unit(tmp_pos);
     Vector to_plane = norm*(tmp_pos - tmp_wp) * norm;
     Vector tangent = TooN::unit(tmp_wp + to_plane - tmp_pos); 
-    std::cout << "tangent: " << tangent << std::endl;
+    //std::cout << "tangent: " << tangent << std::endl;
     tmp_vel = std::min<double>(std::min<double>(max_speed_,diff+1e-4),
                                tmp_vel + timestep*max_accel_*0.3);
     tmp_pos = TooN::unit(tmp_vel * tangent + tmp_pos) * orbit_pos_[2];
-    std::cout << "tmp_pos: " << tmp_pos << std::endl;
+    //std::cout << "tmp_pos: " << tmp_pos << std::endl;
     position = tmp_pos + target_pos_;
 
     orbit_vel_ = tmp_vel;
@@ -325,16 +325,16 @@ OrbitGenerator::update_camera(float timestep, Vector& position, Vector& velocity
     next_waypoint();
     state_ = ChangeRadius;
   } else {
-    std::cout << std::endl;
-    std::cout << "tmp_vel     : " << tmp_vel << std::endl;
-    std::cout << "not near yet: " << orbit_pos_ << std::endl;
-    std::cout << "orbit_wp    : " << orbit_wp_pos_ << std::endl;
-    std::cout << "tmp_pos     : " << tmp_pos << std::endl;
-    std::cout << "wp          : " << wp << std::endl;
-    std::cout << "geo_dist    : " << geodesic_distance() << std::endl;
-    std::cout << "euc_obj_dist: " << TooN::norm(wp-tmp_pos) << std::endl;
-    std::cout << "target_pose : " << target_pos_ << std::endl;
-    std::cout << "state       : " << state_ << std::endl;
+    // std::cout << std::endl;
+    // std::cout << "tmp_vel     : " << tmp_vel << std::endl;
+    // std::cout << "not near yet: " << orbit_pos_ << std::endl;
+    // std::cout << "orbit_wp    : " << orbit_wp_pos_ << std::endl;
+    // std::cout << "tmp_pos     : " << tmp_pos << std::endl;
+    // std::cout << "wp          : " << wp << std::endl;
+    // std::cout << "geo_dist    : " << geodesic_distance() << std::endl;
+    // std::cout << "euc_obj_dist: " << TooN::norm(wp-tmp_pos) << std::endl;
+    // std::cout << "target_pose : " << target_pos_ << std::endl;
+    // std::cout << "state       : " << state_ << std::endl;
   }
 }
 

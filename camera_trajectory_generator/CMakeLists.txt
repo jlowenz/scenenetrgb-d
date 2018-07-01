@@ -16,6 +16,7 @@ find_package(GLUT REQUIRED)
 find_package(Pangolin REQUIRED)
 FIND_PACKAGE(ASSIMP REQUIRED)
 find_package(Boost REQUIRED)
+find_package(glfw3 REQUIRED)
 
 message("Assimp Lib:" ${ASSIMP_LIBRARY})
 
@@ -25,12 +26,14 @@ INCLUDE_DIRECTORIES(
   ${CVD_INCLUDE_DIR}
   ${OPENGL_INCLUDE_DIR}
   ${ASSIMP_INCLUDE}
-  ${Boost_INCLUDE_DIRS})
+  ${Boost_INCLUDE_DIRS}
+  ${GLFW3_INCLUDE_DIRS})
 
 LINK_LIBRARIES(
   ${Pangolin_LIBRARY}
   ${CVD_LIBRARY}
   ${ASSIMP_LIBRARY}
+  ${GLFW3_LIBRARY}
   -lGLEW
   -lglut
   -lGLU

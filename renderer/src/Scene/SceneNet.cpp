@@ -239,7 +239,7 @@ void SceneNet::ParseLayoutFile(std::string layout_file) {
   std::string obj_id;
   std::string obj_wnid;
   int object_scale_count = 0;
-  float obj_scale;
+  float obj_scale = 1.0;
   int object_transform_count = 0;
   float pose[6];
   float timestamp;
@@ -330,6 +330,7 @@ void SceneNet::ParseLayoutFile(std::string layout_file) {
       } else if (scale_mode) {
         object_scale_count++;
         buffer>>obj_scale;
+        std::cout << "Read scale: " << obj_scale << std::endl;          
       } else if (transform_mode) {
         buffer>>obj_transform[object_transform_count*4+0]>>
           obj_transform[object_transform_count*4+1]>>
@@ -624,7 +625,7 @@ bool SceneNet::createOBJMesh(ObjectInfo object, optix::Context& context,
   //This is to sort out the 60% margin we give it in the physics engine
   m_obj_centre.y -= (m_obj_size.y * 0.2);
 
-  const float scale = object.scale/m_obj_size.y;
+  const float scale = object.scale;
   /// Now load the materials...
   loadSceneMaterials(object,file_base_name,m_scene);
   std::cout<<"Working on mesh "<< scale << std::endl;

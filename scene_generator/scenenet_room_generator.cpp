@@ -44,6 +44,7 @@
 #include <boost/foreach.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string/join.hpp>
 
 #include "cmdparser.hpp"
 
@@ -61,9 +62,14 @@ namespace bfs = boost::filesystem;
 const float kSMALL_OBJECT_SIZE = 0.4;
 const std::string dataset_split("train"); // This is the set from which to build the scene, e.g. train,val, or test
 
+  //Setup random number generator
+static std::random_device rd;
+static std::mt19937 mt(rd());
+
+
 class ObjScaling {
 public:
-  ObjScaling(std::string fileName) : percentile(0.0f) {
+  ObjScaling(std::string fileName) : percentile(0.0f), unif_(0.0,1.0) {
     std::ifstream object_scale_file(fileName);
     int n_chars = 3000;
     char readlinedata[n_chars];
@@ -184,6 +190,7 @@ public:
 
   double get_scale_via_probability(std::string& object_name) {
     std::map<std::string,gsl_histogram* >::iterator object_hist_itr;
+    std::cout << "WHERE IS THIS!" << std::endl;
     for(object_hist_itr  = obj_scale_histograms.begin();
         object_hist_itr != obj_scale_histograms.end();
         object_hist_itr++) {
@@ -195,12 +202,12 @@ public:
         /// check if the status is OK
         int status = gsl_histogram_pdf_init (MyHistPdf, object_hist_itr->second);
         assert( status != GSL_EDOM );
-        double r = (double)rand()/RAND_MAX;
-        return gsl_histogram_pdf_sample(MyHistPdf,r);
-
-        ///Usage: https://www.gnu.org/software/gsl/manual/html_node/The-histogram-probability-distribution-struct.html
-        float scale = gsl_histogram_pdf_sample(MyHistPdf,r);
+        //double r = (double)rand()/RAND_MAX;
+        float scale = gsl_histogram_pdf_sample(MyHistPdf,unif_(mt));
+        std::cout << "Getting " << object_name << " scale: " << scale << std::endl;
         return scale;
+        // WTF?
+        ///Usage: https://www.gnu.org/software/gsl/manual/html_node/The-histogram-probability-distribution-struct.html
       }
     }
     std::cerr << "Unknown size for object: " << object_name << std::endl;
@@ -214,6 +221,8 @@ public:
   std::map<std::string, std::tuple<float, float> > obj_x_div_y_bounds;
   std::map<std::string, std::tuple<float, float> > obj_z_div_y_bounds;
   float percentile;
+
+  std::uniform_real_distribution<> unif_;
 };
 
 struct ObjectSampleInfo {
@@ -264,7 +273,7 @@ public:
           sorted_insert(wnid_to_dirs_[id], directory_string);
         }
       }
-      wnids_shapenet.push_back(wnids);
+      wnids_shapenet.push_back(ids[ids.size()-1]);
       iss >> tags;
       std::vector<std::string> vtag;
       {
@@ -273,6 +282,12 @@ public:
           sorted_insert(tag_to_modelid_[tag], count_dir);
         }
       }
+      for (auto& tag : vtag) {
+        for (auto& id : ids) {
+          wnid_to_name_[id].insert(tag);
+        }            
+      }
+      
       iss >> up_vector;
       iss >> front_vector;
       std::replace(up_vector.begin(),up_vector.end(),',',' ');
@@ -351,6 +366,11 @@ public:
       return "NOTFOUND";
     else
       return wnid_to_sunrgbd_mapping[wnid];
+  }
+
+  std::set<std::string> get_names_for_wnid(const std::string& wnid)
+  {
+    return wnid_to_name_[wnid];
   }
 
   int get_random_modelid_with_tag(std::string tag)
@@ -450,9 +470,10 @@ public:
   }
   
 public:
-  std::vector<std::string>directories;
+  std::vector<std::string> directories;
   std::string directory_string, wnids, tags, up_vector, front_vector;
-  std::map<std::string, std::string>wnid_to_sunrgbd_mapping;
+  std::map<std::string, std::set<std::string>> wnid_to_name_;
+  std::map<std::string, std::string> wnid_to_sunrgbd_mapping;
   std::map<std::string,std::vector<ObjectSampleInfo> > scene_to_object_samples;
   std::vector<std::string>wnids_shapenet;
   std::vector<std::vector<float> >model_up_vector;
@@ -550,6 +571,7 @@ get_random_object(std::mt19937& mt,
     model_id = shapenetmodel.get_random_modelid_with_tag(object_tag);
     wnid = shapenetmodel.wnid_from_model_id(model_id);
     objectName = shapenetmodel.get_sunrgbd_object_mapping(wnid);
+    std::cout << model_id << ", " << wnid << ", " << objectName << std::endl;
   }
   model_file_path = shapenetmodel.model_filepath_from_model_id(model_id);
   random_object.model = model_file_path;
@@ -629,6 +651,7 @@ add_object(ChSystem& system, RandomObject& object, ChVector<> pos, double mass =
       center.y -= (y_size * 0.2);
     }
     scale_factor = (desired_y_size / y_size);
+    object.size = scale_factor;
     double z_size = scale_factor * (bbmax.z - bbmin.z);
     double x_size = scale_factor * (bbmax.x - bbmin.x);
     std::cout<<" Z size:"<<z_size<<" X size:"<<x_size<<std::endl;
@@ -752,9 +775,6 @@ int main(int argc, char* argv[])
     }
   }
 
-  //Setup random number generator
-  std::random_device rd;
-  std::mt19937 mt(rd());
 
   // Create a ChronoENGINE physical system
   ChSystem mphysicalSystem(false,1000,20);
@@ -1015,7 +1035,9 @@ int main(int argc, char* argv[])
     }
     ofile << this_object.model <<std::endl;
     ofile << this_object.wnid <<std::endl;
-    ofile << myshapenetmodel.get_sunrgbd_object_mapping(this_object.wnid) << std::endl;
+    //ofile << myshapenetmodel.get_sunrgbd_object_mapping(this_object.wnid) << std::endl;
+    const auto& names = myshapenetmodel.get_names_for_wnid(this_object.wnid);
+    ofile << boost::algorithm::join(names, ",") << std::endl;
     ofile << this_object.size <<std::endl;
     ofile << this_object.bbmin.x << " " << this_object.bbmin.y << " " << this_object.bbmin.z
           << " " << this_object.bbmax.x << " " << this_object.bbmax.y << " "

@@ -24,6 +24,7 @@
 #include <string>
 #include <tuple>
 #include <numeric>
+#include <algorithm>
 
 #include <boost/filesystem.hpp>
 #include <boost/foreach.hpp>
@@ -47,6 +48,11 @@
 #include "trajectoryGenerator/OrbitGenerator.hpp"
 #include "assimpobjloader/assimp_obj_loader.h"
 
+#include <GLFW/glfw3.h>
+#define GLFW_EXPOSE_NATIVE_X11
+#define GLFW_EXPOSE_NATIVE_GLX
+#include <GLFW/glfw3native.h>
+
 //#include <gl/ogl.hpp>
 
 using namespace std;
@@ -67,6 +73,16 @@ inline render_flags_t operator&(render_flags_t a, render_flags_t b) {
   return static_cast<render_flags_t>(static_cast<int>(a) & static_cast<int>(b));
 }
 
+void csv_to_vector(const std::string& csv, std::vector<std::string>& v)
+{
+  std::string s = csv;
+  std::replace(s.begin(), s.end(), ',',' ');
+  istringstream ss(s);
+  std::string tok;
+  while (ss >> tok) {
+    v.push_back(tok);
+  }
+}
 
 #define RADPERDEG 0.0174533
 
@@ -213,11 +229,12 @@ public:
     TooN::SE3<>T_wc;
     TooN::Vector<3> bbmin, bbmax;
     float scale;
+    std::vector<std::string> empty;
     scales_of_objects.push_back(1.0f);
     transformations_of_objects.push_back(T_wc);
     object_bbmin.push_back(bbmin);
-    object_bbmax.push_back(bbmax);
-    object_names_.push_back("");
+    object_bbmax.push_back(bbmax);    
+    object_names_.push_back(empty);
 
     std::string wnid = "";
     wnids_model.push_back(wnid);
@@ -231,7 +248,12 @@ public:
       models_path.push_back(model_file);
       std::string obj_name;
       mylayoutfile >> obj_name;
-      object_names_.push_back(obj_name);
+      std::vector<std::string> vtag;
+      {
+        csv_to_vector(obj_name, vtag);
+      }
+      object_names_.push_back(vtag);
+      
       mylayoutfile >> scale;
       scales_of_objects.push_back(scale);
       mylayoutfile >> bbmin >> bbmax; // read the bounding box
@@ -251,7 +273,14 @@ public:
       AssimpObjLoader obj_model(model_file, wnid);
       models_num_verts_x3_shape.push_back(obj_model.get_numVertes_submeshes());
       model_shape_vertices.push_back(obj_model.get_shape_vertices());
-      min_max_bbs.push_back(obj_model.get_min_max_3d_bounding_box());
+      std::vector<float> mmbb = obj_model.get_min_max_3d_bounding_box();
+      std::vector<float> smmbb;
+      float scale = scales_of_objects[i];
+      std::cout << "Scaling object: " << scale << std::endl;
+      for (auto e : mmbb) {
+        smmbb.push_back(e * scale);
+      }
+      min_max_bbs.push_back(smmbb);
     }
 
     TooN::Vector<3,float> min = TooN::makeVector(1e10,1e10,1e10);
@@ -411,7 +440,7 @@ public:
         int num_meshes = number_of_vertices_x3_shape.size();
         TooN::SE3<>T_wc = transformations_of_objects.at(objs);
         TooN::SO3<>RMat = T_wc.get_rotation();
-        float scale = scales_of_objects.at(objs)/size[1];
+        float scale = scales_of_objects.at(objs);
         if (objs == 0)
           scale = 1.0f;
         std::cout<<"objs: " << objs << ", scale = " << scale << std::endl;
@@ -577,20 +606,27 @@ public:
   TooN::Vector<3> object_centroid(int id)
   {
     auto bb = min_max_bbs[id];
+    TooN::Vector<3> bbmin = TooN::makeVector(bb[0],bb[2],bb[4]);
     TooN::Vector<3> size = TooN::makeVector(bb[1]-bb[0],
                                             bb[3]-bb[2],
                                             bb[5]-bb[4]);
     TooN::Vector<3> centroid = TooN::makeVector((bb[0]+bb[1])/2.0,
                                                 (bb[2]+bb[3])/2.0,
                                                 (bb[4]+bb[5])/2.0);
+    TooN::Vector<3> offset = TooN::makeVector(0.0, size[1]*0.2, 0.0);
     std::cout << "centroid for <" << id << ">: " << centroid << std::endl;
-    centroid[1] = centroid[1] + size[1]*0.2;
+    TooN::Vector<3> centroid_g = centroid - offset;
     std::cout << "    size for <" << id << ">: " << size << std::endl;
-    std::cout << "centroid for <" << id << ">: " << centroid << std::endl;
-    TooN::SE3<> T = transformations_of_objects[id];
-    //auto t = T.get_translation();
-    //std::cout << "translation: " << t << std::endl;
-    return T * centroid ;
+    std::cout << "centroid for <" << id << ">: " << centroid_g << std::endl;
+    TooN::SO3<> R;
+    TooN::SE3<> T_o_g(R, -centroid_g);
+    TooN::SE3<> T_g_w = transformations_of_objects[id];
+    TooN::SE3<> T_o_w = T_g_w * T_o_g;
+    //TooN::SE3<> T_g_c(R, -offset);
+    auto centroid_w = T_o_w * centroid;
+    std::cout << "centroid_w   <" << id << ">: " << centroid_w << std::endl;
+    //sleep(2);
+    return centroid_w;
   }
   
   TooN::Vector<3>  random_object_pose(std::string focus_class)
@@ -598,10 +634,10 @@ public:
     const int MAX_COUNT=100;
     int obj_id = rand_objs_[curr_obj_id_];
     std::cout << "trying " << obj_id << std::endl;
-    std::string obj = object_names_[obj_id];
+    std::vector<std::string>& obj = object_names_[obj_id];
     TooN::Vector<3> centroid = object_centroid(obj_id);
     int count = 0;
-    while ((obj != focus_class
+    while ((std::find(obj.begin(),obj.end(),focus_class) == obj.end()
             || centroid[1] > 3.f
             || centroid[1] < -0.1f) && count++ < MAX_COUNT) {
       curr_obj_id_ = (curr_obj_id_ + 1) % (object_names_.size()-1);
@@ -611,8 +647,11 @@ public:
       centroid = object_centroid(obj_id);
     }
     if (count >= MAX_COUNT) {
-      std::cerr << "Could not get random object pose for: " << object_names_[obj_id] << std::endl;
+      std::cerr << "Could not get random object pose for: "
+                << object_names_[obj_id][0] << std::endl;
       exit(1);
+    } else {
+      std::cerr << "Count was: " << count << std::endl;
     }
     curr_obj_id_ = (curr_obj_id_ + 1) % (object_names_.size()-1);
     std::cout << "Found obj " << obj_id << " at " << centroid << std::endl;
@@ -625,7 +664,7 @@ public:
   std::vector< TooN::Vector<3> > object_bbmin;
   std::vector< TooN::Vector<3> > object_bbmax;  
   std::vector< std::string > wnids_model;
-  std::vector< std::string > object_names_;
+  std::vector< std::vector<std::string> > object_names_;
   std::vector< std::vector<float> > min_max_bbs;
   std::vector< std::vector<int> > observed_objects;
   std::vector<float> min_max_bb_;
@@ -817,10 +856,45 @@ create_context(int width, int height)
   return nullptr;
 }
 
-context_t* 
+void
+error_callback(int error, const char* desc)
+{
+  fprintf(stderr, "ERROR: %d %s\n", error, desc);
+}
+
+decltype(glfwCreateWindow(0,0,"",NULL,NULL))
 create_offscreen_window(const std::string& name, int width, int height)
 {
-  return nullptr;
+  glfwSetErrorCallback(error_callback);
+  if (!glfwInit()) {
+    throw std::runtime_error("GLFW init failed");
+  }
+  
+  int maj, min, rev;
+  glfwGetVersion(&maj, &min, &rev);
+  std::cout << "GLFW: " << maj << "." << min << "." << rev << std::endl;
+    
+  glfwWindowHint(GLFW_VISIBLE, false);
+  glfwWindowHint(GLFW_RESIZABLE, false);
+  glfwWindowHint(GLFW_DECORATED, false);
+  glfwWindowHint(GLFW_AUTO_ICONIFY, false);
+  glfwWindowHint(GLFW_DOUBLEBUFFER, true);
+  glfwWindowHint(GLFW_CLIENT_API, GLFW_OPENGL_API);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 2);
+  glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 1);
+  glfwWindowHint(GLFW_DEPTH_BITS, 24);
+  glfwWindowHint(GLFW_STENCIL_BITS, 8);
+  //glfwWindowHint(GLFW_SAMPLES, 4); // try MSAA
+  glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_ANY_PROFILE);
+  //glfwWindowHint(GLFW_CONTEXT_CREATION_API, GLFW_EGL_CONTEXT_API);
+  auto win = glfwCreateWindow(width, height, "", NULL, NULL);
+  if (win)
+    glfwMakeContextCurrent(win);
+  else {
+    std::cerr << "FAILED TO CREATE WINDOW" << std::endl;
+    exit(1);
+  }
+  return win;
 }
 
 int
@@ -867,6 +941,7 @@ main(int argc, char* argv[])
   const int UI_WIDTH = 150;
 
   pangolin::CreateWindowAndBind("float",w_width+150,w_height);
+  auto win = create_offscreen_window("float", w_width+150, w_height);
 
   glClearColor(0,0,0,0);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -898,10 +973,8 @@ main(int argc, char* argv[])
   float near_plane = 0.01;
   float far_plane  = 1000;
 
-  pangolin::OpenGlRenderState s_cam(
-                                    pangolin::ProjectionMatrixRDF_BottomLeft(640,480,420.0,420.0,320,240,near_plane,far_plane),
-                                    pangolin::ModelViewLookAt(3,3,3, 0,0,0, pangolin::AxisNegZ)
-                                    );
+  pangolin::OpenGlRenderState s_cam(pangolin::ProjectionMatrixRDF_BottomLeft(640,480,420.0,420.0,320,240,near_plane,far_plane),
+                                    pangolin::ModelViewLookAt(3,3,3, 0,0,0, pangolin::AxisNegZ));
 
   pangolin::OpenGlRenderState saved_s_cam(
                                           pangolin::ProjectionMatrixRDF_BottomLeft(640,480,420.0,420.0,320,240,near_plane,far_plane),
@@ -913,7 +986,7 @@ main(int argc, char* argv[])
     .SetBounds(0.0, 1, pangolin::Attach::Pix(UI_WIDTH), 1, -640.0f/480.0f)
     .SetHandler(new pangolin::Handler3D(s_cam));
 
-
+  
   std::cout<<"Loading my scene"<<std::endl;
   Scene myscene(scene_description_file,layouts_dir,d_cam,near_plane,far_plane);
   std::cout<<"Loaded my scene"<<std::endl;
@@ -988,8 +1061,9 @@ main(int argc, char* argv[])
     // o->init(rand_radius(mt), room_center);
 
     TooN::Vector<3> obj_diag = myscene.object_bbmax[1] - myscene.object_bbmin[1];
-    double obj_dim = TooN::norm(obj_diag)/1.2;
-    double room_dim = std::min(room_size[0], std::min(room_size[1],room_size[2])) / 1.7;
+    double obj_dim = std::max(TooN::norm(obj_diag)/2.0, 0.6);
+    double layout_dim = std::min(room_size[0], room_size[2]) / 2.1;
+    double room_dim = std::min(layout_dim, 2.5 * obj_dim);
     std::cout << "Orbit radius bounds: " << obj_dim << " - " << room_dim << std::endl;
     o->init(obj_dim, room_dim);
     trajGen.reset(o);
@@ -1191,7 +1265,7 @@ main(int argc, char* argv[])
       s_cam.Apply();
       is_s_cam_changed = true;
 
-      render_camera_view = false;
+      //render_camera_view = false;
     } else if (is_s_cam_changed) {
       s_cam = saved_s_cam;
       std::cout<<std::endl<<"Reverting camera"<<std::endl;
