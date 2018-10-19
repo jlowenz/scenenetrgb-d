@@ -941,7 +941,7 @@ main(int argc, char* argv[])
   const int UI_WIDTH = 150;
 
   pangolin::CreateWindowAndBind("float",w_width+150,w_height);
-  auto win = create_offscreen_window("float", w_width+150, w_height);
+  //auto win = create_offscreen_window("float", w_width+150, w_height);
 
   glClearColor(0,0,0,0);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);

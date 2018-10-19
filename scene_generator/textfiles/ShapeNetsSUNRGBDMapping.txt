@@ -157,3 +157,4 @@
 03001627 chair.n.01 Found chair
 04256520 sofa.n.01 Found sofa
 04379243 table.n.02 Found table
+03223248 widget.n.01 Found widget
