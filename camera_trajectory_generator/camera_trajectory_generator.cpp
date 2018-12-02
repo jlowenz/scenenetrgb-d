@@ -1342,9 +1342,10 @@ main(int argc, char* argv[])
     ofile << eyeLookAt_start_Poses.at(i).target << std::endl;
     ofile << time_of_end_pose.at(i) << " " << eyeLookAt_end_Poses.at(i).camera << " ";
     ofile << eyeLookAt_end_Poses.at(i).target << std::endl;
-    for (auto id : myscene.observed_objects[i]) {
-      ofile << id << " ";
-    }
+    // WHY was this there?
+    // for (auto id : myscene.observed_objects[i]) {
+    //   ofile << id << " ";
+    // }    
     ofile << std::endl;
   }
   ofile.close();
